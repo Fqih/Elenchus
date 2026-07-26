@@ -1,0 +1,116 @@
+@import "../theme.css";
+
+/* ---- Gate badge ---- */
+
+.gate-badge {
+  display: inline-block;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  border: 1px solid;
+}
+
+.gate-badge.gate-allowed {
+  background: var(--color-allowed-bg);
+  color: var(--color-allowed-fg);
+  border-color: var(--color-allowed-border);
+}
+
+.gate-badge.gate-flagged {
+  background: var(--color-flagged-bg);
+  color: var(--color-flagged-fg);
+  border-color: var(--color-flagged-border);
+}
+
+.gate-badge.gate-blocked {
+  background: var(--color-blocked-bg);
+  color: var(--color-blocked-fg);
+  border-color: var(--color-blocked-border);
+}
+
+/* ---- Claim span (clickable, verdict-colored) ---- */
+
+.claim {
+  display: inline;
+  padding: 0.05em 0.18em;
+  margin: 0 0.05em;
+  border-radius: 3px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: border-color 0.1s ease-in-out;
+}
+
+.claim:hover { border-bottom-color: currentColor; }
+
+.claim.claim-entailed {
+  background: var(--color-allowed-bg);
+  color: var(--color-allowed-fg);
+}
+
+.claim.claim-contradicted {
+  background: var(--color-blocked-bg);
+  color: var(--color-blocked-fg);
+  font-weight: 600;
+}
+
+.claim.claim-unverifiable {
+  background: var(--color-flagged-bg);
+  color: var(--color-flagged-fg);
+}
+
+/* ---- Evidence panel ---- */
+
+.evidence-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 28rem;
+  max-width: 90vw;
+  padding: var(--space-6);
+  background: var(--color-bg);
+  border-left: 1px solid var(--color-border);
+  box-shadow: -2px 0 16px rgba(0, 0, 0, 0.06);
+  overflow-y: auto;
+  z-index: 100;
+}
+
+.evidence-panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.evidence-panel button.close {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.evidence-panel .meta {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  margin-bottom: var(--space-4);
+}
+
+.evidence-panel .evidence-excerpt {
+  background: #f3f4f6;
+  border-left: 3px solid var(--color-accent);
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+}
+
+.evidence-panel .no-evidence {
+  color: var(--color-muted);
+  font-style: italic;
+}
