@@ -145,7 +145,12 @@ class StudioStore:
     def __init__(self, path: Path) -> None:
         self._path = Path(path)
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self._path))
+        # `check_same_thread=False` is necessary because FastAPI's
+        # TestClient (and any real ASGI server) runs request handlers in
+        # a worker thread that is not the same thread that constructed
+        # the connection. The studio is a single-process local service
+        # (per Design.md), so this is safe.
+        self._conn = sqlite3.connect(str(self._path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._create_schema()
 
