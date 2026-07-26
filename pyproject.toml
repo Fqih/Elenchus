@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "elenchus"
+version = "0.1.0"
+description = "Per-claim faithfulness checker for LLM/RAG output"
+requires-python = ">=3.10"
+dependencies = [
+    "sentence-transformers>=2.6.0",
+    "torch>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "httpx>=0.25.0",
+]
+studio = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "pydantic>=2.0.0",
+    "httpx>=0.25.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["elenchus*", "studio*"]
+exclude = ["tests*", "benchmark*", "examples*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "benchmark/tests", "studio/tests"]
