@@ -1,0 +1,66 @@
+@import "../theme.css";
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.list-item {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+}
+
+.list-item header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 0.875rem;
+}
+
+.list-item .name {
+  font-weight: 600;
+  flex: 1;
+}
+
+.list-item .version {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  background: var(--color-flagged-bg);
+  color: var(--color-flagged-fg);
+  padding: 0 0.4rem;
+  border-radius: 3px;
+}
+
+.list-item .preview {
+  margin-top: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  max-height: 3rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.list-item .actions {
+  margin-top: var(--space-2);
+  display: flex;
+  gap: var(--space-2);
+}
+
+.list-item button {
+  font-size: 0.75rem;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  cursor: pointer;
+}
+
+.list .empty {
+  color: var(--color-muted);
+  font-style: italic;
+  text-align: center;
+  padding: var(--space-4);
+}
