@@ -22,6 +22,7 @@ from studio.db.store import (
     SourceDocument,
     VerificationRun,
 )
+from studio.gate import GatePolicy
 
 
 # ---------- Helpers ----------------------------------------------------------
@@ -271,6 +272,54 @@ def test_record_run_missing_project_raises_keyerror() -> None:
             verdicts=[],
             gate_result="allowed",
             latency_ms=1.0,
+        )
+    except KeyError:
+        return
+    raise AssertionError("expected KeyError for missing project")
+
+
+# ---------- Gate policy (Rule 2) --------------------------------------------
+
+
+def test_gate_policy_default_is_default_when_unset() -> None:
+    store = _tmp_store()
+    p = store.create_project(name="kb-test")
+    policy = store.get_gate_policy(project_id=p.id)
+    assert policy == GatePolicy()
+
+
+def test_set_gate_policy_persists_and_round_trips() -> None:
+    store = _tmp_store()
+    p = store.create_project(name="kb-test")
+    custom = GatePolicy(
+        block_on_any_contradiction=False,
+        flag_if_unverifiable_count_exceeds=5,
+    )
+    store.set_gate_policy(project_id=p.id, policy=custom)
+    fetched = store.get_gate_policy(project_id=p.id)
+    assert fetched == custom
+
+
+def test_set_gate_policy_overwrites_existing() -> None:
+    store = _tmp_store()
+    p = store.create_project(name="kb-test")
+    store.set_gate_policy(
+        project_id=p.id, policy=GatePolicy(flag_if_unverifiable_count_exceeds=2)
+    )
+    store.set_gate_policy(
+        project_id=p.id, policy=GatePolicy(flag_if_unverifiable_count_exceeds=10)
+    )
+    assert (
+        store.get_gate_policy(project_id=p.id).flag_if_unverifiable_count_exceeds
+        == 10
+    )
+
+
+def test_set_gate_policy_missing_project_raises_keyerror() -> None:
+    store = _tmp_store()
+    try:
+        store.set_gate_policy(
+            project_id="nope", policy=GatePolicy()
         )
     except KeyError:
         return

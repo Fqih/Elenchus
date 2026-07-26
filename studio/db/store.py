@@ -1,13 +1,16 @@
 """SQLite-backed Studio store.
 
-Schema is created on first use. Three tables:
+Schema is created on first use. Four tables:
 
     projects(id, name, created_at)
     source_documents(id, project_id, name, content, content_sha256,
                      version, created_at, updated_at)
+    source_document_current(id, project_id, current_version)
     verification_runs(id, project_id, question, model_or_prompt_label,
                       candidate_answer, source_document_versions_json,
                       verdicts_json, gate_result, latency_ms, created_at)
+    project_gate_policies(project_id, block_on_any_contradiction,
+                          flag_if_unverifiable_count_exceeds, updated_at)
 
 `source_document_versions_json` is a JSON object mapping
 `source_document_id -> version_int`. We store it as JSON because the set
@@ -18,6 +21,9 @@ confidence, tier, evidence, checked_at). Storing the verdict is what
 makes a run reproducible for the audit purpose — even if the underlying
 NLI model is swapped out, the verdicts that were actually returned are
 preserved.
+
+`project_gate_policies` is Rule 2 honored: the gate policy is configuration
+per project, not buried in API code.
 """
 
 from __future__ import annotations
@@ -32,6 +38,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from elenchus.types import Claim, Evidence, Verdict
+
+from studio.gate import GatePolicy
 
 
 # ---------- Public dataclasses ----------------------------------------------
@@ -193,6 +201,17 @@ class StudioStore:
                     gate_result TEXT NOT NULL,
                     latency_ms REAL NOT NULL,
                     created_at TEXT NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES projects(id)
+                )
+                """
+            )
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS project_gate_policies (
+                    project_id TEXT PRIMARY KEY,
+                    block_on_any_contradiction INTEGER NOT NULL,
+                    flag_if_unverifiable_count_exceeds INTEGER NOT NULL,
+                    updated_at TEXT NOT NULL,
                     FOREIGN KEY (project_id) REFERENCES projects(id)
                 )
                 """
@@ -473,6 +492,53 @@ class StudioStore:
         ).fetchall()
         return [_run_from_row(r) for r in rows]
 
+    # ---- Gate policy (Rule 2: config, not hardcoded logic) ---------------
+
+    def get_gate_policy(self, *, project_id: str) -> GatePolicy:
+        row = self._conn.execute(
+            """
+            SELECT block_on_any_contradiction,
+                   flag_if_unverifiable_count_exceeds
+            FROM project_gate_policies WHERE project_id = ?
+            """,
+            (project_id,),
+        ).fetchone()
+        if row is None:
+            return GatePolicy()
+        return GatePolicy(
+            block_on_any_contradiction=bool(row["block_on_any_contradiction"]),
+            flag_if_unverifiable_count_exceeds=int(
+                row["flag_if_unverifiable_count_exceeds"]
+            ),
+        )
+
+    def set_gate_policy(
+        self, *, project_id: str, policy: GatePolicy
+    ) -> GatePolicy:
+        # Validate project exists.
+        self.get_project(project_id)
+        now = _now()
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO project_gate_policies
+                    (project_id, block_on_any_contradiction,
+                     flag_if_unverifiable_count_exceeds, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(project_id) DO UPDATE SET
+                    block_on_any_contradiction = excluded.block_on_any_contradiction,
+                    flag_if_unverifiable_count_exceeds = excluded.flag_if_unverifiable_count_exceeds,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    project_id,
+                    1 if policy.block_on_any_contradiction else 0,
+                    int(policy.flag_if_unverifiable_count_exceeds),
+                    now.isoformat(),
+                ),
+            )
+        return policy
+
 
 def _run_from_row(row: sqlite3.Row) -> VerificationRun:
     versions = json.loads(row["source_document_versions_json"])
@@ -489,6 +555,12 @@ def _run_from_row(row: sqlite3.Row) -> VerificationRun:
         latency_ms=float(row["latency_ms"]),
         created_at=datetime.fromisoformat(row["created_at"]),
     )
+
+
+# ---------- Gate policy per project (Rule 2) -------------------------------
+
+
+_DEFAULT_GATE_POLICY = GatePolicy()
 
 
 __all__ = [
