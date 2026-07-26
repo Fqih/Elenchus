@@ -1,19 +1,19 @@
 """Studio FastAPI app.
 
-Endpoints (per Plan.md Phase 5 acceptance):
+Endpoints (all under /api):
 
-- POST /projects                                       — create project
-- GET  /projects                                       — list projects
-- GET  /projects/{project_id}                          — get project
-- POST /projects/{project_id}/source-documents         — add source doc
-- GET  /projects/{project_id}/source-documents         — list source docs
-- GET  /projects/{project_id}/source-documents/{sid}   — get source doc (latest by default)
-- PATCH /projects/{project_id}/source-documents/{sid}  — edit source doc (bumps version)
-- POST /projects/{project_id}/checks                   — submit a check
-- GET  /projects/{project_id}/runs                     — list run history
-- GET  /runs/{run_id}                                  — get a single run
-- GET  /projects/{project_id}/gate-policy              — get gate policy
-- PUT  /projects/{project_id}/gate-policy              — set gate policy
+- POST /api/projects                                       — create project
+- GET  /api/projects                                       — list projects
+- GET  /api/projects/{project_id}                          — get project
+- POST /api/projects/{project_id}/source-documents         — add source doc
+- GET  /api/projects/{project_id}/source-documents         — list source docs
+- GET  /api/projects/{project_id}/source-documents/{sid}   — get source doc (latest by default)
+- PATCH /api/projects/{project_id}/source-documents/{sid}  — edit source doc (bumps version)
+- POST /api/projects/{project_id}/checks                   — submit a check
+- GET  /api/projects/{project_id}/runs                     — list run history
+- GET  /api/runs/{run_id}                                  — get a single run
+- GET  /api/projects/{project_id}/gate-policy              — get gate policy
+- PUT  /api/projects/{project_id}/gate-policy              — set gate policy
 
 Per Rule 7, the handler that submits a check uses only the public
 `elenchus.verifier.Verifier` API (verify + verify_claim). Internal
@@ -24,9 +24,12 @@ from __future__ import annotations
 
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Callable, List, Optional
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import APIRouter, FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from elenchus.config import VerificationConfig
@@ -180,19 +183,27 @@ def create_app(
         description="Backend API for Elenchus verification runs.",
         version="0.1.0",
     )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    api = APIRouter(prefix="/api")
 
     # ---- Project endpoints ----------------------------------------------
 
-    @app.post("/projects", response_model=ProjectResponse)
+    @api.post("/projects", response_model=ProjectResponse)
     def create_project(req: CreateProjectRequest) -> dict:
         p = store.create_project(name=req.name)
         return _project_to_dict(p)
 
-    @app.get("/projects", response_model=List[ProjectResponse])
+    @api.get("/projects", response_model=List[ProjectResponse])
     def list_projects() -> list:
         return [_project_to_dict(p) for p in store.list_projects()]
 
-    @app.get("/projects/{project_id}", response_model=ProjectResponse)
+    @api.get("/projects/{project_id}", response_model=ProjectResponse)
     def get_project(project_id: str) -> dict:
         try:
             p = store.get_project(project_id)
@@ -202,7 +213,7 @@ def create_app(
 
     # ---- Source document endpoints --------------------------------------
 
-    @app.post(
+    @api.post(
         "/projects/{project_id}/source-documents",
         response_model=SourceDocumentResponse,
     )
@@ -216,7 +227,7 @@ def create_app(
         )
         return _source_doc_to_dict(doc)
 
-    @app.get(
+    @api.get(
         "/projects/{project_id}/source-documents",
         response_model=List[SourceDocumentResponse],
     )
@@ -230,7 +241,7 @@ def create_app(
             for d in store.list_source_documents(project_id=project_id)
         ]
 
-    @app.get(
+    @api.get(
         "/projects/{project_id}/source-documents/{source_id}",
         response_model=SourceDocumentResponse,
     )
@@ -244,7 +255,7 @@ def create_app(
             raise HTTPException(status_code=404, detail="source document not found")
         return _source_doc_to_dict(doc)
 
-    @app.patch(
+    @api.patch(
         "/projects/{project_id}/source-documents/{source_id}",
         response_model=SourceDocumentResponse,
     )
@@ -262,7 +273,7 @@ def create_app(
 
     # ---- Check endpoint -------------------------------------------------
 
-    @app.post(
+    @api.post(
         "/projects/{project_id}/checks",
         response_model=CheckResponse,
     )
@@ -316,7 +327,7 @@ def create_app(
 
     # ---- Run endpoints --------------------------------------------------
 
-    @app.get("/runs/{run_id}", response_model=CheckResponse)
+    @api.get("/runs/{run_id}", response_model=CheckResponse)
     def get_run(run_id: str) -> dict:
         try:
             run = store.get_run(run_id)
@@ -324,7 +335,7 @@ def create_app(
             raise HTTPException(status_code=404, detail="run not found")
         return _run_to_dict(run)
 
-    @app.get(
+    @api.get(
         "/projects/{project_id}/runs",
         response_model=List[CheckResponse],
     )
@@ -337,7 +348,7 @@ def create_app(
 
     # ---- Gate policy endpoints ------------------------------------------
 
-    @app.get(
+    @api.get(
         "/projects/{project_id}/gate-policy",
         response_model=GatePolicyResponse,
     )
@@ -352,7 +363,7 @@ def create_app(
             "flag_if_unverifiable_count_exceeds": p.flag_if_unverifiable_count_exceeds,
         }
 
-    @app.put(
+    @api.put(
         "/projects/{project_id}/gate-policy",
         response_model=GatePolicyResponse,
     )
@@ -371,6 +382,12 @@ def create_app(
             "block_on_any_contradiction": p.block_on_any_contradiction,
             "flag_if_unverifiable_count_exceeds": p.flag_if_unverifiable_count_exceeds,
         }
+
+    app.include_router(api)
+
+    dist_dir = Path(__file__).parent.parent / "frontend" / "dist"
+    if dist_dir.is_dir():
+        app.mount("/", StaticFiles(directory=str(dist_dir), html=True), name="frontend")
 
     return app
 

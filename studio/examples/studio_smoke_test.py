@@ -96,14 +96,14 @@ def run_smoke(db_path: Path) -> int:
     failures: List[str] = []
     try:
         with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=120.0) as client:
-            _wait_ready(client, "/projects")
+            _wait_ready(client, "/api/projects")
 
             print("=" * 72)
             print("Elenchus Studio — E2E smoke test (Phase 5)")
             print("=" * 72)
 
             # 1. Create project.
-            r = client.post("/projects", json={"name": "kb-smoke"})
+            r = client.post("/api/projects", json={"name": "kb-smoke"})
             failures += _expect(r.status_code == 200, f"create project: {r.status_code}")
             project = r.json()
             _print("POST /projects", project)
@@ -111,7 +111,7 @@ def run_smoke(db_path: Path) -> int:
 
             # 2. Add a source document.
             r = client.post(
-                f"/projects/{project_id}/source-documents",
+                f"/api/projects/{project_id}/source-documents",
                 json={
                     "name": "kb-returns",
                     "content": (
@@ -130,7 +130,7 @@ def run_smoke(db_path: Path) -> int:
 
             # 3. Submit a clean check.
             r = client.post(
-                f"/projects/{project_id}/checks",
+                f"/api/projects/{project_id}/checks",
                 json={
                     "question": "How long do I have to return an item?",
                     "model_or_prompt_label": "gpt-4",
@@ -152,7 +152,7 @@ def run_smoke(db_path: Path) -> int:
 
             # 4. Submit a hallucinated check.
             r = client.post(
-                f"/projects/{project_id}/checks",
+                f"/api/projects/{project_id}/checks",
                 json={
                     "question": "How long do I have to return an item?",
                     "model_or_prompt_label": "gpt-4-hallucinating",
@@ -175,7 +175,7 @@ def run_smoke(db_path: Path) -> int:
 
             # 5. Edit the source doc — version should bump.
             r = client.patch(
-                f"/projects/{project_id}/source-documents/{doc_id}",
+                f"/api/projects/{project_id}/source-documents/{doc_id}",
                 json={"content": doc["content"] + " Updated clause."},
             )
             failures += _expect(r.status_code == 200, f"update source: {r.status_code}")
@@ -187,7 +187,7 @@ def run_smoke(db_path: Path) -> int:
             )
 
             # 6. The previously-recorded run still points at v1.
-            r = client.get(f"/runs/{clean_run_id}")
+            r = client.get(f"/api/runs/{clean_run_id}")
             failures += _expect(r.status_code == 200, f"get clean run: {r.status_code}")
             still_clean = r.json()
             _print("GET /runs/{clean_run_id} after source edit", still_clean)
@@ -199,7 +199,7 @@ def run_smoke(db_path: Path) -> int:
 
             # 7. Toggle the gate policy.
             r = client.put(
-                f"/projects/{project_id}/gate-policy",
+                f"/api/projects/{project_id}/gate-policy",
                 json={
                     "block_on_any_contradiction": False,
                     "flag_if_unverifiable_count_exceeds": 0,
@@ -210,7 +210,7 @@ def run_smoke(db_path: Path) -> int:
 
             # 8. Re-run the hallucinated check — should now be flagged, not blocked.
             r = client.post(
-                f"/projects/{project_id}/checks",
+                f"/api/projects/{project_id}/checks",
                 json={
                     "question": "q",
                     "model_or_prompt_label": "gpt-4-hallucinating",
@@ -226,7 +226,7 @@ def run_smoke(db_path: Path) -> int:
             )
 
             # 9. Run history lists in chronological order.
-            r = client.get(f"/projects/{project_id}/runs")
+            r = client.get(f"/api/projects/{project_id}/runs")
             failures += _expect(r.status_code == 200, f"list runs: {r.status_code}")
             runs = r.json()
             _print("GET /projects/{id}/runs", runs)

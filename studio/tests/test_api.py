@@ -117,31 +117,31 @@ def client_contradicts():
 
 
 def test_create_project_then_get_round_trips(client_supports) -> None:
-    r = client_supports.post("/projects", json={"name": "kb-test"})
+    r = client_supports.post("/api/projects", json={"name": "kb-test"})
     assert r.status_code == 200, r.text
     p = r.json()
     assert p["name"] == "kb-test"
     assert p["id"]
 
-    r2 = client_supports.get(f"/projects/{p['id']}")
+    r2 = client_supports.get(f"/api/projects/{p['id']}")
     assert r2.status_code == 200
     assert r2.json()["id"] == p["id"]
 
 
 def test_create_project_rejects_missing_name(client_supports) -> None:
-    r = client_supports.post("/projects", json={})
+    r = client_supports.post("/api/projects", json={})
     assert r.status_code == 422
 
 
 def test_get_missing_project_returns_404(client_supports) -> None:
-    r = client_supports.get("/projects/does-not-exist")
+    r = client_supports.get("/api/projects/does-not-exist")
     assert r.status_code == 404
 
 
 def test_list_projects_returns_all(client_supports) -> None:
-    client_supports.post("/projects", json={"name": "a"})
-    client_supports.post("/projects", json={"name": "b"})
-    r = client_supports.get("/projects")
+    client_supports.post("/api/projects", json={"name": "a"})
+    client_supports.post("/api/projects", json={"name": "b"})
+    r = client_supports.get("/api/projects")
     assert r.status_code == 200
     names = {p["name"] for p in r.json()}
     assert names == {"a", "b"}
@@ -151,9 +151,9 @@ def test_list_projects_returns_all(client_supports) -> None:
 
 
 def test_add_source_document_returns_version_1(client_supports) -> None:
-    p = client_supports.post("/projects", json={"name": "kb-test"}).json()
+    p = client_supports.post("/api/projects", json={"name": "kb-test"}).json()
     r = client_supports.post(
-        f"/projects/{p['id']}/source-documents",
+        f"/api/projects/{p['id']}/source-documents",
         json={"name": "doc-1", "content": "hello world"},
     )
     assert r.status_code == 200, r.text
@@ -164,13 +164,13 @@ def test_add_source_document_returns_version_1(client_supports) -> None:
 
 
 def test_update_source_document_bumps_version(client_supports) -> None:
-    p = client_supports.post("/projects", json={"name": "kb-test"}).json()
+    p = client_supports.post("/api/projects", json={"name": "kb-test"}).json()
     doc = client_supports.post(
-        f"/projects/{p['id']}/source-documents",
+        f"/api/projects/{p['id']}/source-documents",
         json={"name": "doc-1", "content": "old"},
     ).json()
     r = client_supports.patch(
-        f"/projects/{p['id']}/source-documents/{doc['id']}",
+        f"/api/projects/{p['id']}/source-documents/{doc['id']}",
         json={"content": "new"},
     )
     assert r.status_code == 200, r.text
@@ -179,17 +179,17 @@ def test_update_source_document_bumps_version(client_supports) -> None:
 
 
 def test_get_source_document_at_specific_version(client_supports) -> None:
-    p = client_supports.post("/projects", json={"name": "kb-test"}).json()
+    p = client_supports.post("/api/projects", json={"name": "kb-test"}).json()
     doc = client_supports.post(
-        f"/projects/{p['id']}/source-documents",
+        f"/api/projects/{p['id']}/source-documents",
         json={"name": "doc-1", "content": "v1"},
     ).json()
     client_supports.patch(
-        f"/projects/{p['id']}/source-documents/{doc['id']}",
+        f"/api/projects/{p['id']}/source-documents/{doc['id']}",
         json={"content": "v2"},
     )
     r = client_supports.get(
-        f"/projects/{p['id']}/source-documents/{doc['id']}",
+        f"/api/projects/{p['id']}/source-documents/{doc['id']}",
         params={"version": 1},
     )
     assert r.status_code == 200
@@ -198,16 +198,16 @@ def test_get_source_document_at_specific_version(client_supports) -> None:
 
 
 def test_list_source_documents(client_supports) -> None:
-    p = client_supports.post("/projects", json={"name": "kb-test"}).json()
+    p = client_supports.post("/api/projects", json={"name": "kb-test"}).json()
     client_supports.post(
-        f"/projects/{p['id']}/source-documents",
+        f"/api/projects/{p['id']}/source-documents",
         json={"name": "doc-a", "content": "a"},
     )
     client_supports.post(
-        f"/projects/{p['id']}/source-documents",
+        f"/api/projects/{p['id']}/source-documents",
         json={"name": "doc-b", "content": "b"},
     )
-    r = client_supports.get(f"/projects/{p['id']}/source-documents")
+    r = client_supports.get(f"/api/projects/{p['id']}/source-documents")
     assert r.status_code == 200
     assert len(r.json()) == 2
 
@@ -216,13 +216,13 @@ def test_list_source_documents(client_supports) -> None:
 
 
 def test_submit_check_returns_run_with_verdicts(client_supports) -> None:
-    p = client_supports.post("/projects", json={"name": "kb-test"}).json()
+    p = client_supports.post("/api/projects", json={"name": "kb-test"}).json()
     client_supports.post(
-        f"/projects/{p['id']}/source-documents",
+        f"/api/projects/{p['id']}/source-documents",
         json={"name": "doc-1", "content": "Returns accepted within 30 days."},
     )
     r = client_supports.post(
-        f"/projects/{p['id']}/checks",
+        f"/api/projects/{p['id']}/checks",
         json={
             "question": "What is the return policy?",
             "model_or_prompt_label": "gpt-4",
@@ -241,13 +241,13 @@ def test_submit_check_returns_run_with_verdicts(client_supports) -> None:
 
 
 def test_submit_check_blocks_on_contradiction(client_contradicts) -> None:
-    p = client_contradicts.post("/projects", json={"name": "kb-test"}).json()
+    p = client_contradicts.post("/api/projects", json={"name": "kb-test"}).json()
     client_contradicts.post(
-        f"/projects/{p['id']}/source-documents",
+        f"/api/projects/{p['id']}/source-documents",
         json={"name": "doc-1", "content": "Returns accepted within 30 days."},
     )
     r = client_contradicts.post(
-        f"/projects/{p['id']}/checks",
+        f"/api/projects/{p['id']}/checks",
         json={
             "question": "q",
             "model_or_prompt_label": "m",
@@ -261,13 +261,13 @@ def test_submit_check_blocks_on_contradiction(client_contradicts) -> None:
 def test_check_pins_source_versions_at_submission_time(
     client_supports,
 ) -> None:
-    p = client_supports.post("/projects", json={"name": "kb-test"}).json()
+    p = client_supports.post("/api/projects", json={"name": "kb-test"}).json()
     doc = client_supports.post(
-        f"/projects/{p['id']}/source-documents",
+        f"/api/projects/{p['id']}/source-documents",
         json={"name": "doc-1", "content": "v1"},
     ).json()
     run = client_supports.post(
-        f"/projects/{p['id']}/checks",
+        f"/api/projects/{p['id']}/checks",
         json={
             "question": "q",
             "model_or_prompt_label": "m",
@@ -276,13 +276,13 @@ def test_check_pins_source_versions_at_submission_time(
     ).json()
     # Edit the source doc.
     client_supports.patch(
-        f"/projects/{p['id']}/source-documents/{doc['id']}",
+        f"/api/projects/{p['id']}/source-documents/{doc['id']}",
         json={"content": "v2"},
     )
     # The run's pinned version should still be 1.
     assert run["source_document_versions"][doc["id"]] == 1
     # And the run is still retrievable.
-    r = client_supports.get(f"/runs/{run['id']}")
+    r = client_supports.get(f"/api/runs/{run['id']}")
     assert r.status_code == 200
     assert r.json()["source_document_versions"][doc["id"]] == 1
 
@@ -290,9 +290,9 @@ def test_check_pins_source_versions_at_submission_time(
 def test_check_without_source_documents_returns_unverifiable(
     client_supports,
 ) -> None:
-    p = client_supports.post("/projects", json={"name": "kb-test"}).json()
+    p = client_supports.post("/api/projects", json={"name": "kb-test"}).json()
     r = client_supports.post(
-        f"/projects/{p['id']}/checks",
+        f"/api/projects/{p['id']}/checks",
         json={
             "question": "q",
             "model_or_prompt_label": "m",
@@ -311,7 +311,7 @@ def test_submit_check_against_missing_project_returns_404(
     client_supports,
 ) -> None:
     r = client_supports.post(
-        "/projects/does-not-exist/checks",
+        "/api/projects/does-not-exist/checks",
         json={
             "question": "q",
             "model_or_prompt_label": "m",
@@ -327,21 +327,21 @@ def test_submit_check_against_missing_project_returns_404(
 def test_list_runs_in_chronological_order_with_labels_and_latency(
     client_supports,
 ) -> None:
-    p = client_supports.post("/projects", json={"name": "kb-test"}).json()
+    p = client_supports.post("/api/projects", json={"name": "kb-test"}).json()
     client_supports.post(
-        f"/projects/{p['id']}/source-documents",
+        f"/api/projects/{p['id']}/source-documents",
         json={"name": "doc-1", "content": "x"},
     )
     for label in ["model-a", "model-b", "model-c"]:
         client_supports.post(
-            f"/projects/{p['id']}/checks",
+            f"/api/projects/{p['id']}/checks",
             json={
                 "question": "q",
                 "model_or_prompt_label": label,
                 "candidate_answer": "x",
             },
         )
-    r = client_supports.get(f"/projects/{p['id']}/runs")
+    r = client_supports.get(f"/api/projects/{p['id']}/runs")
     assert r.status_code == 200
     runs = r.json()
     assert [r["model_or_prompt_label"] for r in runs] == [
@@ -355,26 +355,26 @@ def test_list_runs_in_chronological_order_with_labels_and_latency(
 
 
 def test_get_run_returns_same_run(client_supports) -> None:
-    p = client_supports.post("/projects", json={"name": "kb-test"}).json()
+    p = client_supports.post("/api/projects", json={"name": "kb-test"}).json()
     client_supports.post(
-        f"/projects/{p['id']}/source-documents",
+        f"/api/projects/{p['id']}/source-documents",
         json={"name": "doc-1", "content": "x"},
     )
     run = client_supports.post(
-        f"/projects/{p['id']}/checks",
+        f"/api/projects/{p['id']}/checks",
         json={
             "question": "q",
             "model_or_prompt_label": "m",
             "candidate_answer": "x",
         },
     ).json()
-    r = client_supports.get(f"/runs/{run['id']}")
+    r = client_supports.get(f"/api/runs/{run['id']}")
     assert r.status_code == 200
     assert r.json()["id"] == run["id"]
 
 
 def test_get_missing_run_returns_404(client_supports) -> None:
-    r = client_supports.get("/runs/does-not-exist")
+    r = client_supports.get("/api/runs/does-not-exist")
     assert r.status_code == 404
 
 
@@ -382,9 +382,9 @@ def test_get_missing_run_returns_404(client_supports) -> None:
 
 
 def test_set_then_get_gate_policy_round_trips(client_supports) -> None:
-    p = client_supports.post("/projects", json={"name": "kb-test"}).json()
+    p = client_supports.post("/api/projects", json={"name": "kb-test"}).json()
     r = client_supports.put(
-        f"/projects/{p['id']}/gate-policy",
+        f"/api/projects/{p['id']}/gate-policy",
         json={
             "block_on_any_contradiction": False,
             "flag_if_unverifiable_count_exceeds": 5,
@@ -396,7 +396,7 @@ def test_set_then_get_gate_policy_round_trips(client_supports) -> None:
         "flag_if_unverifiable_count_exceeds": 5,
     }
 
-    r2 = client_supports.get(f"/projects/{p['id']}/gate-policy")
+    r2 = client_supports.get(f"/api/projects/{p['id']}/gate-policy")
     assert r2.status_code == 200
     assert r2.json() == {
         "block_on_any_contradiction": False,
@@ -405,8 +405,8 @@ def test_set_then_get_gate_policy_round_trips(client_supports) -> None:
 
 
 def test_gate_unset_returns_default_policy(client_supports) -> None:
-    p = client_supports.post("/projects", json={"name": "kb-test"}).json()
-    r = client_supports.get(f"/projects/{p['id']}/gate-policy")
+    p = client_supports.post("/api/projects", json={"name": "kb-test"}).json()
+    r = client_supports.get(f"/api/projects/{p['id']}/gate-policy")
     assert r.status_code == 200
     assert r.json() == {
         "block_on_any_contradiction": True,
@@ -419,19 +419,19 @@ def test_relaxed_gate_lets_contradiction_pass(client_supports) -> None:
     # But the gate itself decides block vs allowed; since the supports
     # fixture never produces contradiction, we need to set a policy that
     # would block via unverifiable instead.
-    p = client_supports.post("/projects", json={"name": "kb-test"}).json()
+    p = client_supports.post("/api/projects", json={"name": "kb-test"}).json()
     # No source documents → all verdicts unverifiable.
     # With default gate (flag > 1), 1 unverifiable → allowed.
     # Now set flag_if_unverifiable_count_exceeds=0 → flagged.
     client_supports.put(
-        f"/projects/{p['id']}/gate-policy",
+        f"/api/projects/{p['id']}/gate-policy",
         json={
             "block_on_any_contradiction": True,
             "flag_if_unverifiable_count_exceeds": 0,
         },
     )
     r = client_supports.post(
-        f"/projects/{p['id']}/checks",
+        f"/api/projects/{p['id']}/checks",
         json={
             "question": "q",
             "model_or_prompt_label": "m",

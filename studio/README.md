@@ -21,22 +21,27 @@ python -m studio.api.server --db /tmp/studio.sqlite --port 8765
 The server loads the real cross-encoder NLI model on startup so the
 `/checks` endpoint is hot. Subsequent checks take ~400–600ms on CPU.
 
+If `studio/frontend/dist/` exists (run `npm run build` in `studio/frontend/`),
+the FastAPI process also serves the React frontend at `/`. CORS is enabled
+for the Vite dev server (`http://localhost:5173`). The 12 API endpoints live
+under `/api/*`.
+
 ## Endpoints
 
 | Method | Path                                                       | Purpose |
 |-------:|------------------------------------------------------------|---------|
-| POST   | `/projects`                                                | Create a project |
-| GET    | `/projects`                                                | List projects |
-| GET    | `/projects/{project_id}`                                   | Get a project |
-| POST   | `/projects/{project_id}/source-documents`                  | Add a source document (gets v1) |
-| GET    | `/projects/{project_id}/source-documents`                  | List current source documents |
-| GET    | `/projects/{project_id}/source-documents/{sid}`            | Get a source document (latest by default, `?version=N` for older) |
-| PATCH  | `/projects/{project_id}/source-documents/{sid}`            | Edit a source document (bumps version) |
-| POST   | `/projects/{project_id}/checks`                            | Submit a check (runs the library + output gate) |
-| GET    | `/projects/{project_id}/runs`                              | List run history (chronological order) |
-| GET    | `/runs/{run_id}`                                           | Get a single run including its verdicts |
-| GET    | `/projects/{project_id}/gate-policy`                       | Get the project's output-gate policy |
-| PUT    | `/projects/{project_id}/gate-policy`                       | Set the project's output-gate policy |
+| POST   | `/api/projects`                                            | Create a project |
+| GET    | `/api/projects`                                            | List projects |
+| GET    | `/api/projects/{project_id}`                               | Get a project |
+| POST   | `/api/projects/{project_id}/source-documents`              | Add a source document (gets v1) |
+| GET    | `/api/projects/{project_id}/source-documents`              | List current source documents |
+| GET    | `/api/projects/{project_id}/source-documents/{sid}`        | Get a source document (latest by default, `?version=N` for older) |
+| PATCH  | `/api/projects/{project_id}/source-documents/{sid}`        | Edit a source document (bumps version) |
+| POST   | `/api/projects/{project_id}/checks`                        | Submit a check (runs the library + output gate) |
+| GET    | `/api/projects/{project_id}/runs`                          | List run history (chronological order) |
+| GET    | `/api/runs/{run_id}`                                       | Get a single run including its verdicts |
+| GET    | `/api/projects/{project_id}/gate-policy`                   | Get the project's output-gate policy |
+| PUT    | `/api/projects/{project_id}/gate-policy`                   | Set the project's output-gate policy |
 
 ## Output gate precedence
 
