@@ -203,6 +203,9 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
+# Downloaded/generated benchmark corpora (results JSON remains trackable)
+benchmark/data/*.jsonl
+
 # Ruff stuff:
 .ruff_cache/
 
