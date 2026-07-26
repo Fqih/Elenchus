@@ -1,0 +1,51 @@
+{
+  "n_disputed_total_in_slice": 170,
+  "approach": "tiered with keyword_judge as Tier-2 stand-in",
+  "gap_threshold": 0.15,
+  "runs": [
+    {
+      "seed": 1,
+      "n_total": 50,
+      "n_escalated": 40,
+      "n_label_flipped": 9
+    },
+    {
+      "seed": 2,
+      "n_total": 50,
+      "n_escalated": 34,
+      "n_label_flipped": 13
+    },
+    {
+      "seed": 3,
+      "n_total": 50,
+      "n_escalated": 42,
+      "n_label_flipped": 10
+    }
+  ],
+  "metrics_per_seed": [
+    {
+      "n_total": 50,
+      "n_escalated": 40,
+      "n_label_flipped": 9,
+      "escalation_rate": 0.8,
+      "flip_rate_given_escalated": 0.225
+    },
+    {
+      "n_total": 50,
+      "n_escalated": 34,
+      "n_label_flipped": 13,
+      "escalation_rate": 0.68,
+      "flip_rate_given_escalated": 0.38235294117647056
+    },
+    {
+      "n_total": 50,
+      "n_escalated": 42,
+      "n_label_flipped": 10,
+      "escalation_rate": 0.84,
+      "flip_rate_given_escalated": 0.23809523809523808
+    }
+  ],
+  "mean_escalation_rate": 0.7733333333333333,
+  "mean_flip_rate_given_escalated": 0.2818160597572362,
+  "note": "Development proxy using RAGTruth's explicit `implicit_true` annotations; this is not a FaithBench result. Per Rule 8 these numbers are NOT combined with the RAGTruth metrics in benchmark_results.json."
+}
