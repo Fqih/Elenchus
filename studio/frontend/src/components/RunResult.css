@@ -1,0 +1,22 @@
+@import "../theme.css";
+
+.run-result {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+}
+
+.run-result header {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  margin-bottom: var(--space-4);
+  font-size: 0.875rem;
+  color: var(--color-muted);
+}
+
+.run-result .answer {
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
