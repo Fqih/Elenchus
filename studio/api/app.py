@@ -95,16 +95,21 @@ class CheckResponse(BaseModel):
     gate_result: str
     latency_ms: float
     created_at: datetime
+    phase7_retry_stop_reason: Optional[str] = None
+    phase7_retry_attempts: int = 0
+    phase7_memory_item_ids: List[str] = Field(default_factory=list)
 
 
 class GatePolicyRequest(BaseModel):
     block_on_any_contradiction: bool = True
     flag_if_unverifiable_count_exceeds: int = Field(default=1, ge=0)
+    phase7_enabled: bool = False
 
 
 class GatePolicyResponse(BaseModel):
     block_on_any_contradiction: bool
     flag_if_unverifiable_count_exceeds: int
+    phase7_enabled: bool
 
 
 # ---------- Serialization helpers -------------------------------------------
@@ -162,6 +167,9 @@ def _run_to_dict(r) -> dict:
         "gate_result": r.gate_result,
         "latency_ms": r.latency_ms,
         "created_at": r.created_at,
+        "phase7_retry_stop_reason": r.phase7_retry_stop_reason,
+        "phase7_retry_attempts": r.phase7_retry_attempts,
+        "phase7_memory_item_ids": list(r.phase7_memory_item_ids),
     }
 
 
@@ -362,6 +370,7 @@ def create_app(
         return {
             "block_on_any_contradiction": p.block_on_any_contradiction,
             "flag_if_unverifiable_count_exceeds": p.flag_if_unverifiable_count_exceeds,
+            "phase7_enabled": p.phase7_enabled,
         }
 
     @api.put(
@@ -375,6 +384,7 @@ def create_app(
                 policy=GatePolicy(
                     block_on_any_contradiction=req.block_on_any_contradiction,
                     flag_if_unverifiable_count_exceeds=req.flag_if_unverifiable_count_exceeds,
+                    phase7_enabled=req.phase7_enabled,
                 ),
             )
         except KeyError:
@@ -382,6 +392,7 @@ def create_app(
         return {
             "block_on_any_contradiction": p.block_on_any_contradiction,
             "flag_if_unverifiable_count_exceeds": p.flag_if_unverifiable_count_exceeds,
+            "phase7_enabled": p.phase7_enabled,
         }
 
     app.include_router(api)

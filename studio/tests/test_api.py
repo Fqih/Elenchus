@@ -394,6 +394,7 @@ def test_set_then_get_gate_policy_round_trips(client_supports) -> None:
     assert r.json() == {
         "block_on_any_contradiction": False,
         "flag_if_unverifiable_count_exceeds": 5,
+        "phase7_enabled": False,
     }
 
     r2 = client_supports.get(f"/api/projects/{p['id']}/gate-policy")
@@ -401,6 +402,7 @@ def test_set_then_get_gate_policy_round_trips(client_supports) -> None:
     assert r2.json() == {
         "block_on_any_contradiction": False,
         "flag_if_unverifiable_count_exceeds": 5,
+        "phase7_enabled": False,
     }
 
 
@@ -411,6 +413,7 @@ def test_gate_unset_returns_default_policy(client_supports) -> None:
     assert r.json() == {
         "block_on_any_contradiction": True,
         "flag_if_unverifiable_count_exceeds": 1,
+        "phase7_enabled": False,
     }
 
 
