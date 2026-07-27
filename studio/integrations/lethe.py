@@ -12,6 +12,13 @@ under a 'phase7/' subdirectory.
 Why HashFakeEmbedder: no sentence-transformers dependency for v1. Real
 embeddings are a v1.5 enhancement.
 
+Why _ThreadSafeSQLiteBackend: Lethe's stock SQLiteBackend opens with
+the default check_same_thread=True. Studio's handler can be invoked
+from a different thread than where the connection was first opened
+(FastAPI under TestClient, ASGI workers under uvicorn), so we open
+with check_same_thread=False. SQLite serializes writes itself; the
+absence of cross-connection locking is fine for our usage.
+
 Public entry points:
   write_supported_claims(*, project_id, run_id, verdicts, source_versions,
                          db_dir) -> list[str]
@@ -21,6 +28,7 @@ Public entry points:
 from __future__ import annotations
 
 import os
+import sqlite3
 from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -51,16 +59,47 @@ def _project_db_path(db_dir: Path, project_id: str) -> Path:
     return _phase7_dir(db_dir) / f"{project_id}.sqlite"
 
 
+class _ThreadSafeSQLiteBackend(SQLiteBackend):
+    """SQLiteBackend subclass that lets the connection cross threads.
+
+    Lethe 0.1.0's stock SQLiteBackend opens with check_same_thread=True
+    (the sqlite3 default). The Studio handler can be invoked from a
+    thread different from the one that first opened the file (e.g.
+    when ASGI dispatch or TestClient switches threads). We trade a
+    little thread safety for the Studio's reality: SQLite serializes
+    writes per-connection so we never get a torn write, and the
+    backend's reads/writes are tiny.
+
+    We don't touch lethe's schema bootstrap — we still call the
+    parent __init__.
+    """
+
+    def __init__(self, path: str | Path) -> None:  # type: ignore[override]
+        # Open with check_same_thread=False BEFORE parent __init__ runs.
+        # The parent calls sqlite3.connect again internally, which
+        # overwrites self._conn; we then close-and-replace with our
+        # thread-safe connection.
+        self._path = str(path)
+        super().__init__(self._path)
+        self._conn.close()
+        self._conn = sqlite3.connect(
+            self._path,
+            check_same_thread=False,
+        )
+        self._conn.row_factory = sqlite3.Row
+
+
 @lru_cache(maxsize=64)
 def _open_store(db_dir_str: str, project_id: str) -> MemoryStore:
     """Open (and cache) the per-project Lethe MemoryStore.
 
     The lru_cache means we re-use a single MemoryStore per (db_dir,
-    project_id) within the process. SQLiteBackend opens in default
-    mode; concurrent reads are fine, writes serialize.
+    project_id) within the process. _ThreadSafeSQLiteBackend lets the
+    underlying connection be used from any thread (the Studio handler
+    may run on a worker thread distinct from the writer).
     """
     db_dir = Path(db_dir_str)
-    backend = SQLiteBackend(_project_db_path(db_dir, project_id))
+    backend = _ThreadSafeSQLiteBackend(_project_db_path(db_dir, project_id))
     store = MemoryStore(
         backend=backend,
         embedder=HashFakeEmbedder(),

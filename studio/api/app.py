@@ -114,6 +114,17 @@ class GatePolicyResponse(BaseModel):
     phase7_enabled: bool
 
 
+class MemoryClaimResponse(BaseModel):
+    id: str
+    content: str
+    tags: List[str]
+    source_session_id: str
+    created_at: datetime
+    last_accessed_at: datetime
+    access_count: int
+    importance_score: float
+
+
 # ---------- Serialization helpers -------------------------------------------
 
 
@@ -418,6 +429,40 @@ def create_app(
         except KeyError:
             raise HTTPException(status_code=404, detail="project not found")
         return [_run_to_dict(r) for r in store.list_runs(project_id=project_id)]
+
+    # ---- Phase 7: Lethe recall endpoint ---------------------------------
+
+    @api.get(
+        "/projects/{project_id}/runs/{run_id}/memory-claims",
+        response_model=List[MemoryClaimResponse],
+    )
+    def get_run_memory_claims(project_id: str, run_id: str) -> list:
+        try:
+            store.get_project(project_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="project not found")
+        try:
+            store.get_run(run_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="run not found")
+        items = _phase7.recall_run_claims(
+            project_id=project_id,
+            run_id=run_id,
+            db_dir=store._path.parent,  # noqa: SLF001
+        )
+        return [
+            {
+                "id": item.id,
+                "content": item.content,
+                "tags": list(item.tags),
+                "source_session_id": item.source_session_id,
+                "created_at": item.created_at,
+                "last_accessed_at": item.last_accessed_at,
+                "access_count": item.access_count,
+                "importance_score": item.importance_score,
+            }
+            for item in items
+        ]
 
     # ---- Gate policy endpoints ------------------------------------------
 
