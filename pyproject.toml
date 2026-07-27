@@ -23,6 +23,10 @@ studio = [
     "pydantic>=2.0.0",
     "httpx>=0.25.0",
 ]
+phase7 = [
+    "soteria-loop @ file://../Loopward",
+    "lethe-agent @ file://../Lethe",
+]
 
 [tool.setuptools.packages.find]
 include = ["elenchus*", "studio*"]
