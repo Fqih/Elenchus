@@ -68,7 +68,7 @@ was checked against. When a run is created:
 
 Later edits to a source document bump its version (and add a new row
 in the `source_documents` table). The old version is immutable, but
-retrievable via `GET /projects/{id}/source-documents/{sid}?version=N`.
+retrievable via `GET /api/projects/{id}/source-documents/{sid}?version=N`.
 
 This is the load-bearing acceptance item from Plan.md Phase 5: a
 previously-recorded run still points at the version it was actually
@@ -76,7 +76,7 @@ checked against, even after the source is edited.
 
 ## Run history
 
-`GET /projects/{id}/runs` returns all runs for a project in
+`GET /api/projects/{id}/runs` returns all runs for a project in
 chronological order. Each run includes:
 
 - `model_or_prompt_label` — the label to use for side-by-side

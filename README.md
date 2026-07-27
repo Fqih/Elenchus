@@ -212,8 +212,8 @@ Current implementation status:
 - ✅ Phase 6: Studio frontend (React + TypeScript + Vite)
 - ⏳ Phase 7: Soteria/Lethe integration (pending user-supplied source files)
 
-Phases 6–7 are not implemented yet. See Plan.md for their required order
-and acceptance criteria.
+Phase 7 (Soteria/Lethe integrations) is pending user-supplied source files.
+See Plan.md for the required order and acceptance criteria.
 
 ## Studio (Phase 5)
 
