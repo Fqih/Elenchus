@@ -40,6 +40,11 @@ from elenchus.verifier import Verifier
 
 from studio.db.store import StudioStore
 from studio.gate import GatePolicy, evaluate_gate
+from studio.integrations import (
+    Phase7DependencyError,
+    run_retry,
+    write_supported_claims,
+)
 
 
 NliFactory = Callable[[VerificationConfig], object]
@@ -322,6 +327,7 @@ def create_app(
         policy = store.get_gate_policy(project_id=project_id)
         gate_result = evaluate_gate(policy, verdicts)
 
+        # Persist the run first (gives us the run_id to tag Lethe items with).
         run = store.record_run(
             project_id=project_id,
             question=req.question,
@@ -332,6 +338,67 @@ def create_app(
             gate_result=gate_result,
             latency_ms=latency_ms,
         )
+
+        # Phase 7 integrations (post-persist; soft-fail per spec).
+        retry_stop_reason: Optional[str] = None
+        retry_attempts: int = 0
+        memory_item_ids: List[str] = []
+
+        if policy.phase7_enabled and gate_result == "blocked":
+            try:
+                retry = run_retry(
+                    verifier, cfg,
+                    candidate_answer=req.candidate_answer,
+                    source_documents=sources_for_verifier,
+                )
+                retry_stop_reason = retry.stop_reason
+                retry_attempts = retry.attempts
+            except Phase7DependencyError:
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "Phase 7 retry requested but soteria-loop is not installed. "
+                        "Install with: pip install -e \".[phase7]\" or pip install soteria-loop."
+                    ),
+                )
+            except Exception:  # noqa: BLE001 — soft-fail per spec
+                retry_stop_reason = "error"
+                retry_attempts = 0
+
+        elif policy.phase7_enabled and gate_result == "allowed":
+            try:
+                memory_item_ids = write_supported_claims(
+                    project_id=project_id,
+                    run_id=run.id,
+                    verdicts=verdicts,
+                    source_versions=source_versions,
+                    db_dir=store._path.parent,  # noqa: SLF001
+                )
+            except Phase7DependencyError:
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "Phase 7 memory requested but lethe-agent is not installed. "
+                        "Install with: pip install -e \".[phase7]\" or pip install lethe-agent."
+                    ),
+                )
+            except Exception:  # noqa: BLE001 — soft-fail per spec
+                memory_item_ids = []
+
+        # flagged → skip both integrations (per spec)
+
+        # If either integration populated state, update the run row.
+        if retry_stop_reason or retry_attempts or memory_item_ids:
+            store.update_run_phase7(
+                run_id=run.id,
+                phase7_retry_stop_reason=retry_stop_reason,
+                phase7_retry_attempts=retry_attempts,
+                phase7_memory_item_ids=memory_item_ids,
+            )
+            run.phase7_retry_stop_reason = retry_stop_reason
+            run.phase7_retry_attempts = retry_attempts
+            run.phase7_memory_item_ids = memory_item_ids
+
         return _run_to_dict(run)
 
     # ---- Run endpoints --------------------------------------------------
