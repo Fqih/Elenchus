@@ -122,3 +122,12 @@ LD_LIBRARY_PATH=$HOME/.local/lib python -m pytest studio/tests
 | **8** | Phase 5 doesn't touch benchmarks. N/A. |
 | **9** | Stopping here for review. |
 | **10** | The smoke test reports the real latency (~500ms per check on CPU) and the actual NLI confidence scores. No smoothing. |
+
+## Frontend (Phase 6)
+
+See `studio/frontend/README.md` for the React + TypeScript + Vite
+frontend. Briefly:
+
+- `npm run dev` (with the FastAPI server running on :8765) gives hot reload at http://localhost:5173/.
+- `npm run build` outputs `studio/frontend/dist/`, which the FastAPI server mounts at `/` when present.
+- The frontend calls only `/api/*` paths. The API table at the top of this README lists those paths.

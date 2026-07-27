@@ -53,9 +53,10 @@ examples/
 ├── customer_support_demo.py    Flagship demo (rendered output)
 └── streaming_guardrail_demo.py Phase 4 streaming guardrail
 
-studio/                   Phase 5: FastAPI backend + SQLite store
+studio/
 ├── api/                  FastAPI app + uvicorn entry point
 ├── db/                   StudioStore (Project, SourceDocument, Run, GatePolicy)
+├── frontend/             Phase 6: React + TypeScript + Vite
 ├── gate.py               Output gate — pure function (Rule 2)
 ├── integrations/         Reserved for Phase 7 (Soteria/Lethe)
 └── tests/                Gate + store + API tests
@@ -208,7 +209,7 @@ Current implementation status:
   still pending
 - ✅ Phase 4: StreamingVerifier + this README
 - ✅ Phase 5: Studio FastAPI backend + SQLite store + output gate
-- ⏳ Phase 6: Studio frontend (pending decision: plain HTML/JS vs. React)
+- ✅ Phase 6: Studio frontend (React + TypeScript + Vite)
 - ⏳ Phase 7: Soteria/Lethe integration (pending user-supplied source files)
 
 Phases 6–7 are not implemented yet. See Plan.md for their required order
@@ -242,6 +243,37 @@ The smoke test boots the real server, runs the full flow (project →
 source → check → source edit → version-pin check → gate policy toggle →
 run history), and prints every HTTP exchange. See `studio/README.md`
 for the endpoint reference and Rule 6/7 walkthrough.
+
+## Studio frontend (Phase 6)
+
+`studio/frontend/` is a React + TypeScript + Vite SPA that consumes the
+Phase 5 backend. It implements the Plan.md Phase 6 acceptance flow:
+upload/paste a source document, paste a candidate answer, see the
+verdicts color-coded with evidence on click, and view run history with
+version pinning visible.
+
+Run the dev server (hot reload):
+
+```bash
+# terminal 1 — backend
+python -m studio.api.server --db /tmp/studio.sqlite --port 8765
+
+# terminal 2 — frontend
+cd studio/frontend
+npm run dev
+# open http://localhost:5173/
+```
+
+Build for production:
+
+```bash
+cd studio/frontend && npm run build
+python -m studio.api.server --db /tmp/studio.sqlite --port 8765
+# open http://localhost:8765/
+```
+
+The frontend never imports the `elenchus/` library directly (Rule 6).
+It only talks to the backend over HTTP, exactly like an external client.
 
 ## License
 
