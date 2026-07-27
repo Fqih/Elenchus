@@ -45,7 +45,7 @@
 
 .claim:hover { border-bottom-color: currentColor; }
 
-.claim.claim-entailed {
+.claim.claim-supported {
   background: var(--color-allowed-bg);
   color: var(--color-allowed-fg);
 }

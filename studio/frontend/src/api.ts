@@ -3,6 +3,7 @@ import type {
   SourceDocument,
   Run,
   GatePolicy,
+  MemoryClaim,
 } from "./types";
 
 export class ApiError extends Error {
@@ -133,4 +134,15 @@ export function setGatePolicy(
     method: "PUT",
     body: JSON.stringify(policy),
   });
+}
+
+// ---- Phase 7: Lethe memory ---------------------------------------------
+
+export function getRunMemoryClaims(
+  projectId: string,
+  runId: string,
+): Promise<MemoryClaim[]> {
+  return apiCall<MemoryClaim[]>(
+    `/api/projects/${projectId}/runs/${runId}/memory-claims`,
+  );
 }

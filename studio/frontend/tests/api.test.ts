@@ -198,6 +198,7 @@ describe("apiCall", () => {
     await setGatePolicy("p1", {
       block_on_any_contradiction: false,
       flag_if_unverifiable_count_exceeds: 0,
+      phase7_enabled: false,
     });
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/projects/p1/gate-policy",

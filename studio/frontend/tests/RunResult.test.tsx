@@ -35,7 +35,7 @@ const run: Run = {
         text: "Returns within 30 days.",
         span: [28, 50],
       },
-      label: "entailed",
+      label: "supported",
       confidence: 0.95,
       tier: "nli",
       evidence: null,
@@ -45,6 +45,9 @@ const run: Run = {
   gate_result: "blocked",
   latency_ms: 642,
   created_at: "t",
+  phase7_retry_stop_reason: null,
+  phase7_retry_attempts: 0,
+  phase7_memory_item_ids: [],
 };
 
 describe("RunResult", () => {
@@ -59,6 +62,6 @@ describe("RunResult", () => {
   it("renders both claim texts with the right verdict classes", () => {
     render(<RunResult run={run} onClaimClick={() => {}} />);
     expect(screen.getByText("Shipping takes 1 to 2 days.")).toHaveClass("claim-contradicted");
-    expect(screen.getByText("Returns within 30 days.")).toHaveClass("claim-entailed");
+    expect(screen.getByText("Returns within 30 days.")).toHaveClass("claim-supported");
   });
 });
