@@ -58,8 +58,13 @@ studio/
 ├── db/                   StudioStore (Project, SourceDocument, Run, GatePolicy)
 ├── frontend/             Phase 6: React + TypeScript + Vite
 ├── gate.py               Output gate — pure function (Rule 2)
-├── integrations/         Reserved for Phase 7 (Soteria/Lethe)
-└── tests/                Gate + store + API tests
+├── integrations/         Phase 7: Soteria adapter + Lethe adapter (lazy)
+│   ├── __init__.py       Module-level lazy proxies + Phase7DependencyError
+│   ├── soteria.py        run_retry(verifier, cfg, ...) → RetryResult
+│   └── lethe.py          write_supported_claims / recall_run_claims
+├── examples/             studio_smoke_test.py (Phase 5)
+│                         studio_phase7_smoke_test.py (Phase 7 acceptance)
+└── tests/                Gate + store + API + Phase 7 tests
 
 tests/                    Unit, integration, streaming, and benchmark tests
 ```
@@ -210,10 +215,7 @@ Current implementation status:
 - ✅ Phase 4: StreamingVerifier + this README
 - ✅ Phase 5: Studio FastAPI backend + SQLite store + output gate
 - ✅ Phase 6: Studio frontend (React + TypeScript + Vite)
-- ⏳ Phase 7: Soteria/Lethe integration (pending user-supplied source files)
-
-Phase 7 (Soteria/Lethe integrations) is pending user-supplied source files.
-See Plan.md for the required order and acceptance criteria.
+- ✅ Phase 7: Soteria retry + Lethe per-project memory (opt-in per project)
 
 ## Studio (Phase 5)
 
@@ -243,6 +245,44 @@ The smoke test boots the real server, runs the full flow (project →
 source → check → source edit → version-pin check → gate policy toggle →
 run history), and prints every HTTP exchange. See `studio/README.md`
 for the endpoint reference and Rule 6/7 walkthrough.
+
+## Studio Phase 7 (Soteria + Lethe)
+
+Phase 7 is an **opt-in**, per-project extension of the Studio backend:
+
+- When a project's gate policy has `phase7_enabled=True`, a `blocked`
+  run is handed to **Soteria** which retries the verification in an
+  agent loop with bounds (`max_steps`, `max_runtime_seconds`,
+  `repeated_action_limit`, `consecutive_error_limit`). The run row
+  records `phase7_retry_attempts` and `phase7_retry_stop_reason`.
+- When the same run is `allowed`, the **supported** claims are written
+  to **Lethe** (one `MemoryItem` per claim) into a per-project SQLite
+  at `<studio_db>/phase7/{project_id}.sqlite`. Each item is tagged with
+  `run:{run_id}` so claims are traceable back to the verification run,
+  and the row records `phase7_memory_item_ids`.
+- When `phase7_enabled=False` (the default), nothing Phase 7 happens.
+
+Install the optional deps:
+
+```bash
+pip install -e ".[phase7]"
+```
+
+Walk the Phase 7 acceptance end-to-end (boots the same real server as
+the Phase 5 smoke test):
+
+```bash
+LD_LIBRARY_PATH=$HOME/.local/lib python -m studio.examples.studio_phase7_smoke_test
+```
+
+Missing-dep behavior: if `soteria-loop` or `lethe-agent` are not
+installed, the relevant `/checks` request returns **HTTP 503** with a
+message naming the missing package — the rest of the API still works.
+
+Soft-fail: any other error inside a Phase 7 integration is swallowed
+and the run is recorded with `phase7_retry_stop_reason="error"` (and no
+memory ids), per Plan.md. Phase 7 is never load-bearing for the gate
+decision.
 
 ## Studio frontend (Phase 6)
 

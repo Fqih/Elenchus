@@ -100,15 +100,93 @@ This walks the Plan.md Phase 5 acceptance end-to-end against a fresh
 SQLite DB, using the real NLI model. It exits 0 if all expectations
 pass, 1 otherwise, and prints the full HTTP exchange to stdout.
 
+## Phase 7 (Soteria + Lethe) — opt-in
+
+Phase 7 is **off by default**. A project opts in by setting
+`phase7_enabled=true` on its gate policy:
+
+```bash
+curl -X PUT http://localhost:8765/api/projects/$PID/gate-policy \
+  -H 'content-type: application/json' \
+  -d '{"block_on_any_contradiction": true,
+       "flag_if_unverifiable_count_exceeds": 1,
+       "phase7_enabled": true}'
+```
+
+When enabled, `POST /api/projects/{id}/checks` triggers Phase 7
+integrations per the gate result, post-persist:
+
+| Gate result | Integration | Persisted on run row |
+|-------------|-------------|----------------------|
+| `blocked`   | Soteria retry loop (bounded by `max_steps`, `max_runtime_seconds`, `repeated_action_limit`, `consecutive_error_limit`) | `phase7_retry_attempts`, `phase7_retry_stop_reason` |
+| `allowed`   | Lethe per-project memory: one `MemoryItem` per `supported` verdict, tagged with `run:{run_id}` | `phase7_memory_item_ids` (list of memory ids) |
+| `flagged`   | Neither (skipped) | — |
+
+Install:
+
+```bash
+pip install -e ".[phase7]"   # adds soteria-loop + lethe-agent (editable)
+```
+
+Per-project Lethe SQLite lives at `<studio_db_dir>/phase7/<project_id>.sqlite`.
+This means each project's memory is isolated — there is no cross-project leak
+and no global directory to clean up.
+
+Behavior when a Phase 7 dependency is missing:
+
+- A `blocked` run with Soteria missing → **HTTP 503** with a message
+  naming `soteria-loop`.
+- An `allowed` run with Lethe missing → **HTTP 503** with a message
+  naming `lethe-agent`.
+
+Behavior on Phase 7 runtime errors (other than missing-dep): the error
+is **soft-failed** — the run row records the partial state
+(`phase7_retry_stop_reason="error"`, `phase7_memory_item_ids=[]`),
+and the gate result is unchanged. Phase 7 is never load-bearing for the
+gate decision.
+
+Walk the Phase 7 acceptance end-to-end:
+
+```bash
+LD_LIBRARY_PATH=$HOME/.local/lib python -m studio.examples.studio_phase7_smoke_test
+```
+
+This is the same boot pattern as `studio_smoke_test.py` (subprocess +
+httpx + `_wait_ready`); it adds Phase 7 expectations on top.
+
+## Phase 7 design notes
+
+- **Lazy imports.** `studio/integrations/__init__.py` does NOT import
+  `soteria-loop` or `lethe-agent` at module load. The adapters are
+  loaded on first call so `pip install -e ".[studio]"` works without
+  `.[phase7]`.
+- **`Phase7DependencyError`.** Raised by the adapters when the
+  underlying library is not importable. The handler maps it to HTTP
+  503.
+- **`RetryResult`** (returned by `run_retry`): dataclass with `attempts`
+  (int) and `stop_reason` (str) — `closed` Soteria `StopReason` values
+  are mapped to their `value` strings so they survive JSON.
+- **Per-project memory.** The Lethe adapter opens one SQLite backend
+  per project and `lru_cache`s it (`maxsize=64`); multiple sequential
+  writes in one process reuse the same file handle.
+- **Soft-fail vs hard-fail.** Only missing-dep is hard (503). Anything
+  else during a Phase 7 integration is soft — the run is recorded
+  with the partial result and the gate decision stands.
+- **Tags.** Each Lethe `MemoryItem` carries
+  `["elenchus_verified", "run:{run_id}", "project:{project_id}",
+  "source:{source_id}", "v{version}"]` so a later `recall_run_claims`
+  call filters cleanly.
+
 ## Tests
 
 ```bash
 LD_LIBRARY_PATH=$HOME/.local/lib python -m pytest studio/tests
 ```
 
-50 tests across the gate (11), store (20), and API (19).
+74 tests across the gate (11), store (20), API (19), Phase 7 schema (5),
+Phase 7 soteria (4), Phase 7 lethe (5), and Phase 7 API (10).
 
-## Rules walkthrough (Phase 5)
+## Rules walkthrough
 
 | Rule | How it was honored |
 |------|--------------------|
@@ -117,11 +195,11 @@ LD_LIBRARY_PATH=$HOME/.local/lib python -m pytest studio/tests
 | **3** | The gate defaults to `unverifiable` when no judge is configured — already enforced by the library; the Studio carries that behavior forward. |
 | **4** | Every check appends a `verification_log` entry through the standard `elenchus.verification_log` API, and the run is persisted with its verdicts as JSON. |
 | **5** | The check endpoint uses the public `Verifier.verify(...)` from the library — the same code path the CLI uses. (Streaming is library-level, not yet exposed via API.) |
-| **6** | `studio/` does not import `soteria` or `lethe`. The `studio/integrations/` directory is empty and reserved for Phase 7. |
-| **7** | Every call into the library goes through the public API (`Verifier`, `VerificationConfig`, `NliVerifier`). Private helpers are not used. |
-| **8** | Phase 5 doesn't touch benchmarks. N/A. |
+| **6** | `studio/` (excluding `studio/integrations/`) does not import `soteria` or `lethe`. The Phase 7 adapters live exclusively under `studio/integrations/`. The API handler imports the package and calls module-level proxies (`_phase7.run_retry(...)`), so missing-dep surfaces as `Phase7DependencyError` → 503 instead of an `ImportError` at startup. |
+| **7** | Every call into the library goes through the public API (`Verifier`, `VerificationConfig`, `NliVerifier`). Private helpers are not used. Phase 7 touches Verifier only via its public `.verify(...)` surface. |
+| **8** | Doesn't touch benchmarks. N/A. |
 | **9** | Stopping here for review. |
-| **10** | The smoke test reports the real latency (~500ms per check on CPU) and the actual NLI confidence scores. No smoothing. |
+| **10** | Smoke tests report real latency and real NLI confidence scores. No smoothing. |
 
 ## Frontend (Phase 6)
 
