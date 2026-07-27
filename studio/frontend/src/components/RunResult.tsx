@@ -34,6 +34,11 @@ export function RunResult({
     segments.push({ kind: "text", text: run.candidate_answer.slice(cursor) });
   }
 
+  // Phase 7 summary — only shown when either integration populated state.
+  const hadRetry = run.phase7_retry_attempts > 0 || run.phase7_retry_stop_reason !== null;
+  const hadMemory = run.phase7_memory_item_ids.length > 0;
+  const phase7Active = hadRetry || hadMemory;
+
   return (
     <div className="run-result">
       <header>
@@ -41,6 +46,33 @@ export function RunResult({
         <span>verified in {run.latency_ms.toFixed(0)} ms</span>
         <span>model: {run.model_or_prompt_label}</span>
       </header>
+      {phase7Active && (
+        <section className="phase7">
+          <h4>Phase 7</h4>
+          {hadRetry && (
+            <div className="phase7-row">
+              <span className="phase7-label">Soteria retry</span>
+              <span>
+                {run.phase7_retry_attempts} attempt{run.phase7_retry_attempts === 1 ? "" : "s"}
+                {run.phase7_retry_stop_reason && (
+                  <span className="phase7-stop">
+                    stop reason: <code>{run.phase7_retry_stop_reason}</code>
+                  </span>
+                )}
+              </span>
+            </div>
+          )}
+          {hadMemory && (
+            <div className="phase7-row">
+              <span className="phase7-label">Lethe memory</span>
+              <span>
+                {run.phase7_memory_item_ids.length} item
+                {run.phase7_memory_item_ids.length === 1 ? "" : "s"} stored
+              </span>
+            </div>
+          )}
+        </section>
+      )}
       <div className="answer">
         {segments.map((seg, i) =>
           seg.kind === "text" ? (

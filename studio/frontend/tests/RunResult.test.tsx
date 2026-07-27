@@ -64,4 +64,40 @@ describe("RunResult", () => {
     expect(screen.getByText("Shipping takes 1 to 2 days.")).toHaveClass("claim-contradicted");
     expect(screen.getByText("Returns within 30 days.")).toHaveClass("claim-supported");
   });
+
+  it("hides Phase 7 panel when nothing populated (default off / flagged)", () => {
+    render(<RunResult run={run} onClaimClick={() => {}} />);
+    expect(screen.queryByText("Phase 7")).not.toBeInTheDocument();
+  });
+
+  it("renders Phase 7 panel when Soteria retry populated state", () => {
+    const retried = { ...run, phase7_retry_attempts: 3, phase7_retry_stop_reason: "repeated_action" };
+    render(<RunResult run={retried} onClaimClick={() => {}} />);
+    expect(screen.getByText("Phase 7")).toBeInTheDocument();
+    expect(screen.getByText(/Soteria retry/)).toBeInTheDocument();
+    expect(screen.getByText("3 attempts")).toBeInTheDocument();
+    expect(screen.getByText("repeated_action")).toBeInTheDocument();
+  });
+
+  it("renders Phase 7 panel when Lethe memory populated state", () => {
+    const remembered = {
+      ...run,
+      gate_result: "allowed" as const,
+      phase7_memory_item_ids: ["mem-a", "mem-b", "mem-c"],
+    };
+    render(<RunResult run={remembered} onClaimClick={() => {}} />);
+    expect(screen.getByText("Phase 7")).toBeInTheDocument();
+    expect(screen.getByText(/Lethe memory/)).toBeInTheDocument();
+    expect(screen.getByText("3 items stored")).toBeInTheDocument();
+  });
+
+  it("singular grammar for one stored item", () => {
+    const remembered = {
+      ...run,
+      gate_result: "allowed" as const,
+      phase7_memory_item_ids: ["only-one"],
+    };
+    render(<RunResult run={remembered} onClaimClick={() => {}} />);
+    expect(screen.getByText("1 item stored")).toBeInTheDocument();
+  });
 });
