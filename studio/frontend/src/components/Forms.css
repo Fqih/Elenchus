@@ -57,7 +57,7 @@
   cursor: not-allowed;
 }
 
-.form .error {
+.error {
   color: var(--color-blocked-fg);
   background: var(--color-blocked-bg);
   border: 1px solid var(--color-blocked-border);
