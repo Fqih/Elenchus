@@ -1,0 +1,140 @@
+"""Lethe adapter for the Studio Phase 7 allowed-path memory.
+
+Writes one MemoryItem per 'entailed' verdict into a per-project Lethe
+SQLiteBackend at <studio_db_dir>/phase7/{project_id}.sqlite. Each item
+is tagged with run:{run_id}, project:{project_id}, source:{source_id},
+v{version} so the run_id is filterable for traceability.
+
+Why per-project: each project's memory is its own. No cross-project
+leak. The Lethe backend's SQLite file lives next to the Studio DB
+under a 'phase7/' subdirectory.
+
+Why HashFakeEmbedder: no sentence-transformers dependency for v1. Real
+embeddings are a v1.5 enhancement.
+
+Public entry points:
+  write_supported_claims(*, project_id, run_id, verdicts, source_versions,
+                         db_dir) -> list[str]
+  recall_run_claims(*, project_id, run_id, db_dir) -> list[MemoryItem]
+"""
+
+from __future__ import annotations
+
+import os
+from functools import lru_cache
+from pathlib import Path
+from typing import Dict, List, Optional
+
+from elenchus.types import Verdict
+
+from lethe import DecayConfig, MemoryStore
+from lethe.backends.sqlite_backend import SQLiteBackend
+from lethe.embeddings import HashFakeEmbedder
+from lethe.memory_item import MemoryItem
+
+
+_TAG_PREFIX_RUN = "run:"
+_TAG_PREFIX_PROJECT = "project:"
+_TAG_PREFIX_SOURCE = "source:"
+_TAG_PREFIX_VERSION = "v"
+_TAG_VERIFIED = "elenchus_verified"
+
+
+def _phase7_dir(db_dir: Path) -> Path:
+    """Return the per-project Lethe DB directory; create if missing."""
+    out = Path(db_dir) / "phase7"
+    out.mkdir(parents=True, exist_ok=True)
+    return out
+
+
+def _project_db_path(db_dir: Path, project_id: str) -> Path:
+    return _phase7_dir(db_dir) / f"{project_id}.sqlite"
+
+
+@lru_cache(maxsize=64)
+def _open_store(db_dir_str: str, project_id: str) -> MemoryStore:
+    """Open (and cache) the per-project Lethe MemoryStore.
+
+    The lru_cache means we re-use a single MemoryStore per (db_dir,
+    project_id) within the process. SQLiteBackend opens in default
+    mode; concurrent reads are fine, writes serialize.
+    """
+    db_dir = Path(db_dir_str)
+    backend = SQLiteBackend(_project_db_path(db_dir, project_id))
+    store = MemoryStore(
+        backend=backend,
+        embedder=HashFakeEmbedder(),
+        decay_config=DecayConfig(),
+    )
+    return store
+
+
+def _resolve_db_dir(db_dir: Optional[Path]) -> Path:
+    if db_dir is not None:
+        return Path(db_dir)
+    env = os.environ.get("ELENCHUS_STUDIO_DB_DIR")
+    if env:
+        return Path(env)
+    raise ValueError(
+        "db_dir must be provided or ELENCHUS_STUDIO_DB_DIR must be set."
+    )
+
+
+def write_supported_claims(
+    *,
+    project_id: str,
+    run_id: str,
+    verdicts: List[Verdict],
+    source_versions: Dict[str, int],
+    db_dir: Optional[Path] = None,
+) -> List[str]:
+    """Write one MemoryItem per entailed verdict. Return the memory_ids.
+
+    Only verdicts with label == 'entailed' are written (Plan.md:
+    "exactly the supported claims and only those"). The returned list
+    is in input order so the /checks handler can persist it 1:1 with
+    the verdict list (filtering out the skipped ones in lockstep).
+    """
+    resolved_db_dir = _resolve_db_dir(db_dir)
+    store = _open_store(str(resolved_db_dir), project_id)
+    memory_ids: List[str] = []
+    for verdict in verdicts:
+        if verdict.label != "entailed":
+            continue
+        evidence = verdict.evidence
+        source_id = evidence.source_id if evidence is not None else "unknown"
+        version = source_versions.get(source_id, 0)
+        tags = [
+            _TAG_VERIFIED,
+            f"{_TAG_PREFIX_RUN}{run_id}",
+            f"{_TAG_PREFIX_PROJECT}{project_id}",
+            f"{_TAG_PREFIX_SOURCE}{source_id}",
+            f"{_TAG_PREFIX_VERSION}{version}",
+        ]
+        item = store.remember(
+            content=verdict.claim.text,
+            session_id=project_id,
+            tags=tags,
+        )
+        memory_ids.append(item.id)
+    return memory_ids
+
+
+def recall_run_claims(
+    *,
+    project_id: str,
+    run_id: str,
+    db_dir: Optional[Path] = None,
+) -> List[MemoryItem]:
+    """Return all MemoryItems tagged with run:{run_id} for this project.
+
+    Filters via the backend's list_all() (Lethe's MemoryStore.recall
+    does not support tag-based `where=` clauses).
+    """
+    resolved_db_dir = _resolve_db_dir(db_dir)
+    store = _open_store(str(resolved_db_dir), project_id)
+    target_tag = f"{_TAG_PREFIX_RUN}{run_id}"
+    return [item for item in store.backend.list_all() if target_tag in item.tags]
+
+
+__all__ = ["write_supported_claims", "recall_run_claims"]
