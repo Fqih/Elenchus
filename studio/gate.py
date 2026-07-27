@@ -31,6 +31,7 @@ GateResult = Literal["allowed", "blocked", "flagged"]
 class GatePolicy:
     block_on_any_contradiction: bool = True
     flag_if_unverifiable_count_exceeds: int = 1
+    phase7_enabled: bool = False
 
 
 def evaluate_gate(policy: GatePolicy, verdicts: List[Verdict]) -> GateResult:

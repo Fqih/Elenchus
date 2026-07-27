@@ -76,6 +76,10 @@ class VerificationRun:
     gate_result: str  # "allowed" | "blocked" | "flagged"
     latency_ms: float
     created_at: datetime
+    # Phase 7 fields (nullable / defaults for backward compatibility).
+    phase7_retry_stop_reason: Optional[str] = None
+    phase7_retry_attempts: int = 0
+    phase7_memory_item_ids: List[str] = field(default_factory=list)
 
 
 # ---------- Helpers ----------------------------------------------------------
@@ -206,6 +210,9 @@ class StudioStore:
                     gate_result TEXT NOT NULL,
                     latency_ms REAL NOT NULL,
                     created_at TEXT NOT NULL,
+                    phase7_retry_stop_reason TEXT,
+                    phase7_retry_attempts INTEGER NOT NULL DEFAULT 0,
+                    phase7_memory_item_ids TEXT NOT NULL DEFAULT '[]',
                     FOREIGN KEY (project_id) REFERENCES projects(id)
                 )
                 """
@@ -216,14 +223,59 @@ class StudioStore:
                     project_id TEXT PRIMARY KEY,
                     block_on_any_contradiction INTEGER NOT NULL,
                     flag_if_unverifiable_count_exceeds INTEGER NOT NULL,
+                    phase7_enabled INTEGER NOT NULL DEFAULT 0,
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY (project_id) REFERENCES projects(id)
                 )
                 """
             )
+        # Idempotent column-level migration for Phase 7.
+        self._migrate_phase7_columns()
 
     def close(self) -> None:
         self._conn.close()
+
+    def _migrate_phase7_columns(self) -> None:
+        """Idempotently add Phase 7 columns to existing rows from Phase 5/6.
+
+        SQLite has no `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. We use
+        PRAGMA table_info to detect what's already present and only
+        issue ALTER TABLE statements for the missing columns. Safe to
+        call on every open.
+        """
+        runs_cols = {
+            row["name"]
+            for row in self._conn.execute(
+                "PRAGMA table_info(verification_runs)"
+            ).fetchall()
+        }
+        if "phase7_retry_stop_reason" not in runs_cols:
+            self._conn.execute(
+                "ALTER TABLE verification_runs "
+                "ADD COLUMN phase7_retry_stop_reason TEXT"
+            )
+        if "phase7_retry_attempts" not in runs_cols:
+            self._conn.execute(
+                "ALTER TABLE verification_runs "
+                "ADD COLUMN phase7_retry_attempts INTEGER NOT NULL DEFAULT 0"
+            )
+        if "phase7_memory_item_ids" not in runs_cols:
+            self._conn.execute(
+                "ALTER TABLE verification_runs "
+                "ADD COLUMN phase7_memory_item_ids TEXT NOT NULL DEFAULT '[]'"
+            )
+
+        pol_cols = {
+            row["name"]
+            for row in self._conn.execute(
+                "PRAGMA table_info(project_gate_policies)"
+            ).fetchall()
+        }
+        if "phase7_enabled" not in pol_cols:
+            self._conn.execute(
+                "ALTER TABLE project_gate_policies "
+                "ADD COLUMN phase7_enabled INTEGER NOT NULL DEFAULT 0"
+            )
 
     # ---- Project -----------------------------------------------------------
 
@@ -429,19 +481,25 @@ class StudioStore:
         verdicts: List[Verdict],
         gate_result: str,
         latency_ms: float,
+        phase7_retry_stop_reason: Optional[str] = None,
+        phase7_retry_attempts: int = 0,
+        phase7_memory_item_ids: Optional[List[str]] = None,
     ) -> VerificationRun:
         # Validate project exists.
         self.get_project(project_id)
         run_id = str(uuid.uuid4())
         now = _now()
+        memory_item_ids = phase7_memory_item_ids or []
         with self._conn:
             self._conn.execute(
                 """
                 INSERT INTO verification_runs
                     (id, project_id, question, model_or_prompt_label,
                      candidate_answer, source_document_versions_json,
-                     verdicts_json, gate_result, latency_ms, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     verdicts_json, gate_result, latency_ms, created_at,
+                     phase7_retry_stop_reason, phase7_retry_attempts,
+                     phase7_memory_item_ids)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -454,6 +512,9 @@ class StudioStore:
                     gate_result,
                     float(latency_ms),
                     now.isoformat(),
+                    phase7_retry_stop_reason,
+                    int(phase7_retry_attempts),
+                    json.dumps(memory_item_ids),
                 ),
             )
         return VerificationRun(
@@ -467,6 +528,9 @@ class StudioStore:
             gate_result=gate_result,
             latency_ms=float(latency_ms),
             created_at=now,
+            phase7_retry_stop_reason=phase7_retry_stop_reason,
+            phase7_retry_attempts=int(phase7_retry_attempts),
+            phase7_memory_item_ids=list(memory_item_ids),
         )
 
     def get_run(self, run_id: str) -> VerificationRun:
@@ -474,7 +538,9 @@ class StudioStore:
             """
             SELECT id, project_id, question, model_or_prompt_label,
                    candidate_answer, source_document_versions_json,
-                   verdicts_json, gate_result, latency_ms, created_at
+                   verdicts_json, gate_result, latency_ms, created_at,
+                   phase7_retry_stop_reason, phase7_retry_attempts,
+                   phase7_memory_item_ids
             FROM verification_runs WHERE id = ?
             """,
             (run_id,),
@@ -488,7 +554,9 @@ class StudioStore:
             """
             SELECT id, project_id, question, model_or_prompt_label,
                    candidate_answer, source_document_versions_json,
-                   verdicts_json, gate_result, latency_ms, created_at
+                   verdicts_json, gate_result, latency_ms, created_at,
+                   phase7_retry_stop_reason, phase7_retry_attempts,
+                   phase7_memory_item_ids
             FROM verification_runs
             WHERE project_id = ?
             ORDER BY created_at ASC, id ASC
@@ -497,13 +565,46 @@ class StudioStore:
         ).fetchall()
         return [_run_from_row(r) for r in rows]
 
+    def update_run_phase7(
+        self,
+        *,
+        run_id: str,
+        phase7_retry_stop_reason: Optional[str],
+        phase7_retry_attempts: int,
+        phase7_memory_item_ids: List[str],
+    ) -> None:
+        """Persist Phase 7 integration outputs onto an existing run row.
+
+        The /checks handler records the run before invoking Phase 7
+        integrations (so the run_id is available to tag Lethe memory
+        items). This method is called after the integrations complete
+        to persist their outputs back onto the run.
+        """
+        with self._conn:
+            self._conn.execute(
+                """
+                UPDATE verification_runs SET
+                    phase7_retry_stop_reason = ?,
+                    phase7_retry_attempts = ?,
+                    phase7_memory_item_ids = ?
+                WHERE id = ?
+                """,
+                (
+                    phase7_retry_stop_reason,
+                    int(phase7_retry_attempts),
+                    json.dumps(list(phase7_memory_item_ids)),
+                    run_id,
+                ),
+            )
+
     # ---- Gate policy (Rule 2: config, not hardcoded logic) ---------------
 
     def get_gate_policy(self, *, project_id: str) -> GatePolicy:
         row = self._conn.execute(
             """
             SELECT block_on_any_contradiction,
-                   flag_if_unverifiable_count_exceeds
+                   flag_if_unverifiable_count_exceeds,
+                   phase7_enabled
             FROM project_gate_policies WHERE project_id = ?
             """,
             (project_id,),
@@ -515,6 +616,7 @@ class StudioStore:
             flag_if_unverifiable_count_exceeds=int(
                 row["flag_if_unverifiable_count_exceeds"]
             ),
+            phase7_enabled=bool(row["phase7_enabled"]),
         )
 
     def set_gate_policy(
@@ -528,17 +630,20 @@ class StudioStore:
                 """
                 INSERT INTO project_gate_policies
                     (project_id, block_on_any_contradiction,
-                     flag_if_unverifiable_count_exceeds, updated_at)
-                VALUES (?, ?, ?, ?)
+                     flag_if_unverifiable_count_exceeds,
+                     phase7_enabled, updated_at)
+                VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(project_id) DO UPDATE SET
                     block_on_any_contradiction = excluded.block_on_any_contradiction,
                     flag_if_unverifiable_count_exceeds = excluded.flag_if_unverifiable_count_exceeds,
+                    phase7_enabled = excluded.phase7_enabled,
                     updated_at = excluded.updated_at
                 """,
                 (
                     project_id,
                     1 if policy.block_on_any_contradiction else 0,
                     int(policy.flag_if_unverifiable_count_exceeds),
+                    1 if policy.phase7_enabled else 0,
                     now.isoformat(),
                 ),
             )
@@ -559,6 +664,9 @@ def _run_from_row(row: sqlite3.Row) -> VerificationRun:
         gate_result=row["gate_result"],
         latency_ms=float(row["latency_ms"]),
         created_at=datetime.fromisoformat(row["created_at"]),
+        phase7_retry_stop_reason=row["phase7_retry_stop_reason"],
+        phase7_retry_attempts=int(row["phase7_retry_attempts"]),
+        phase7_memory_item_ids=list(json.loads(row["phase7_memory_item_ids"])),
     )
 
 
