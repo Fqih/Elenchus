@@ -25,22 +25,22 @@ def _verdict(label: str, text: str = "C", source_id: str = "s1") -> Verdict:
     )
 
 
-def test_writes_one_item_per_entailed_verdict(tmp_path: Path) -> None:
+def test_writes_one_item_per_supported_verdict(tmp_path: Path) -> None:
     verdicts = [
-        _verdict("entailed", "claim A"),
+        _verdict("supported", "claim A"),
         _verdict("contradicted", "claim B"),
-        _verdict("entailed", "claim C"),
+        _verdict("supported", "claim C"),
         _verdict("unverifiable", "claim D"),
     ]
     ids = write_supported_claims(
         project_id="p1", run_id="r1", verdicts=verdicts,
         source_versions={"s1": 3}, db_dir=tmp_path,
     )
-    assert len(ids) == 2  # only the two entailed ones
+    assert len(ids) == 2  # only the two supported ones
 
 
 def test_each_written_item_has_run_tag(tmp_path: Path) -> None:
-    verdicts = [_verdict("entailed", "claim A")]
+    verdicts = [_verdict("supported", "claim A")]
     ids = write_supported_claims(
         project_id="p1", run_id="r-xyz", verdicts=verdicts,
         source_versions={"s1": 1}, db_dir=tmp_path,
@@ -56,7 +56,7 @@ def test_each_written_item_has_run_tag(tmp_path: Path) -> None:
 
 
 def test_recall_run_claims_filters_by_run(tmp_path: Path) -> None:
-    v = [_verdict("entailed", "X")]
+    v = [_verdict("supported", "X")]
     write_supported_claims(
         project_id="p1", run_id="rA", verdicts=v,
         source_versions={"s1": 1}, db_dir=tmp_path,
@@ -73,7 +73,7 @@ def test_recall_run_claims_filters_by_run(tmp_path: Path) -> None:
 
 
 def test_per_project_isolation(tmp_path: Path) -> None:
-    v = [_verdict("entailed", "X")]
+    v = [_verdict("supported", "X")]
     write_supported_claims(
         project_id="pA", run_id="r1", verdicts=v,
         source_versions={"s1": 1}, db_dir=tmp_path,
@@ -91,7 +91,7 @@ def test_per_project_isolation(tmp_path: Path) -> None:
 
 def test_db_dir_env_fallback(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("ELENCHUS_STUDIO_DB_DIR", str(tmp_path))
-    v = [_verdict("entailed", "X")]
+    v = [_verdict("supported", "X")]
     ids = write_supported_claims(
         project_id="p1", run_id="r1", verdicts=v,
         source_versions={"s1": 1},

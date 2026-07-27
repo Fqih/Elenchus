@@ -40,11 +40,8 @@ from elenchus.verifier import Verifier
 
 from studio.db.store import StudioStore
 from studio.gate import GatePolicy, evaluate_gate
-from studio.integrations import (
-    Phase7DependencyError,
-    run_retry,
-    write_supported_claims,
-)
+from studio import integrations as _phase7
+from studio.integrations import Phase7DependencyError
 
 
 NliFactory = Callable[[VerificationConfig], object]
@@ -346,7 +343,7 @@ def create_app(
 
         if policy.phase7_enabled and gate_result == "blocked":
             try:
-                retry = run_retry(
+                retry = _phase7.run_retry(
                     verifier, cfg,
                     candidate_answer=req.candidate_answer,
                     source_documents=sources_for_verifier,
@@ -367,7 +364,7 @@ def create_app(
 
         elif policy.phase7_enabled and gate_result == "allowed":
             try:
-                memory_item_ids = write_supported_claims(
+                memory_item_ids = _phase7.write_supported_claims(
                     project_id=project_id,
                     run_id=run.id,
                     verdicts=verdicts,

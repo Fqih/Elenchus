@@ -1,6 +1,6 @@
 """Lethe adapter for the Studio Phase 7 allowed-path memory.
 
-Writes one MemoryItem per 'entailed' verdict into a per-project Lethe
+Writes one MemoryItem per 'supported' verdict into a per-project Lethe
 SQLiteBackend at <studio_db_dir>/phase7/{project_id}.sqlite. Each item
 is tagged with run:{run_id}, project:{project_id}, source:{source_id},
 v{version} so the run_id is filterable for traceability.
@@ -88,9 +88,9 @@ def write_supported_claims(
     source_versions: Dict[str, int],
     db_dir: Optional[Path] = None,
 ) -> List[str]:
-    """Write one MemoryItem per entailed verdict. Return the memory_ids.
+    """Write one MemoryItem per supported verdict. Return the memory_ids.
 
-    Only verdicts with label == 'entailed' are written (Plan.md:
+    Only verdicts with label == 'supported' are written (Plan.md:
     "exactly the supported claims and only those"). The returned list
     is in input order so the /checks handler can persist it 1:1 with
     the verdict list (filtering out the skipped ones in lockstep).
@@ -99,7 +99,7 @@ def write_supported_claims(
     store = _open_store(str(resolved_db_dir), project_id)
     memory_ids: List[str] = []
     for verdict in verdicts:
-        if verdict.label != "entailed":
+        if verdict.label != "supported":
             continue
         evidence = verdict.evidence
         source_id = evidence.source_id if evidence is not None else "unknown"
