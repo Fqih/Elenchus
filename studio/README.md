@@ -183,8 +183,8 @@ httpx + `_wait_ready`); it adds Phase 7 expectations on top.
 LD_LIBRARY_PATH=$HOME/.local/lib python -m pytest studio/tests
 ```
 
-74 tests across the gate (11), store (20), API (19), Phase 7 schema (5),
-Phase 7 soteria (4), Phase 7 lethe (5), and Phase 7 API (10).
+68 tests across the gate (11), store (20), API (19), Phase 7 schema (5),
+Phase 7 soteria (4), Phase 7 lethe (5), and Phase 7 API (4).
 
 ## Rules walkthrough
 
