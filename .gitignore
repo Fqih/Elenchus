@@ -219,3 +219,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Stray Node manifests at the repo root — the real package.json /
+# package-lock.json live under studio/frontend/. These prevent a
+# stray `npm init` at the repo root from leaking in.
+/package.json
+/package-lock.json
