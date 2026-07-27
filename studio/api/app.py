@@ -29,6 +29,7 @@ from typing import Callable, List, Optional
 
 from fastapi import APIRouter, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -388,6 +389,24 @@ def create_app(
     dist_dir = Path(__file__).parent.parent / "frontend" / "dist"
     if dist_dir.is_dir():
         app.mount("/", StaticFiles(directory=str(dist_dir), html=True), name="frontend")
+
+        # SPA fallback: deep links like /projects/{id} are not real files in
+        # the dist tree. StaticFiles would 404 them in production. This
+        # catch-all returns index.html for any non-/api path that didn't
+        # match a static file. Registered AFTER the static mount so the
+        # mount gets first crack at serving real files.
+        index_file = dist_dir / "index.html"
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def spa_fallback(full_path: str):
+            if full_path.startswith("api/"):
+                raise HTTPException(status_code=404, detail="not found")
+            if not index_file.is_file():
+                raise HTTPException(
+                    status_code=404,
+                    detail="Frontend not built. Run: cd studio/frontend && npm run build",
+                )
+            return FileResponse(index_file)
 
     return app
 
