@@ -56,7 +56,9 @@ examples/
 studio/
 ├── api/                  FastAPI app + uvicorn entry point
 ├── db/                   StudioStore (Project, SourceDocument, Run, GatePolicy)
-├── frontend/             Phase 6: React + TypeScript + Vite
+├── frontend/             Phase 6+: React + TypeScript + Vite
+│   ├── src/components/   MemoryClaimsViewer (Phase 8), RunResult, etc.
+│   └── tests/            vitest — 38 tests across Phase 8 components
 ├── gate.py               Output gate — pure function (Rule 2)
 ├── integrations/         Phase 7: Soteria adapter + Lethe adapter (lazy)
 │   ├── __init__.py       Module-level lazy proxies + Phase7DependencyError
@@ -64,9 +66,16 @@ studio/
 │   └── lethe.py          write_supported_claims / recall_run_claims
 ├── examples/             studio_smoke_test.py (Phase 5)
 │                         studio_phase7_smoke_test.py (Phase 7 acceptance)
-└── tests/                Gate + store + API + Phase 7 tests
+└── tests/                74 tests — gate(11) + store(20) + api(19)
+                          + phase7-schema(5) + phase7-soteria(4)
+                          + phase7-lethe(5) + phase7-api(4) + recall(6)
 
 tests/                    Unit, integration, streaming, and benchmark tests
+
+.github/
+└── workflows/
+    └── ci.yml            Phase 8: GitHub Actions — pytest + frontend
+                          typecheck/vitest on push/PR to main
 ```
 
 ## Install
@@ -216,6 +225,9 @@ Current implementation status:
 - ✅ Phase 5: Studio FastAPI backend + SQLite store + output gate
 - ✅ Phase 6: Studio frontend (React + TypeScript + Vite)
 - ✅ Phase 7: Soteria retry + Lethe per-project memory (opt-in per project)
+- ✅ Phase 8: Frontend + Ops polish — Phase 7 fields visible in the
+  result panel, Lethe memory browser, recall endpoint, GitHub Actions CI,
+  README updates
 
 ## Studio (Phase 5)
 
@@ -314,6 +326,38 @@ python -m studio.api.server --db /tmp/studio.sqlite --port 8765
 
 The frontend never imports the `elenchus/` library directly (Rule 6).
 It only talks to the backend over HTTP, exactly like an external client.
+
+## Studio Phase 8 (Frontend + Ops polish)
+
+Phase 8 surfaces everything Phase 7 produced to the user, plus the
+ops plumbing needed to ship it:
+
+- **Phase 7 fields on every run row**: each `RunResult` now renders a
+  compact "Phase 7" panel showing `Soteria retry` (attempts + stop
+  reason) and `Lethe memory` (item count) when they are populated —
+  off by default for projects that never enabled Phase 7.
+- **Lethe memory browser**: a new `MemoryClaimsViewer` component lives
+  under the Run history. When a run stored memory, the user can expand
+  the claim list and read each stored `MemoryItem` (content, tags,
+  importance score, access count).
+- **Recall endpoint**: `GET /api/projects/{project_id}/runs/{run_id}/memory-claims`
+  walks the per-project Lethe SQLite and returns the tagged items. It
+  validates both the project and the run id (404 on miss) and never
+  exposes Lethe embeddings in the wire format.
+- **Cross-thread SQLite backend**: `studio/integrations/lethe.py` now
+  uses a thread-safe subclass of Lethe's `SQLiteBackend`
+  (`check_same_thread=False`) because FastAPI workers invoke from
+  threads other than the one that created the connection.
+- **GitHub Actions CI**: `.github/workflows/ci.yml` runs `pytest` (covers
+  `tests/`, `benchmark/tests/`, `studio/tests/`) plus frontend
+  `typecheck` and `vitest` on every push and PR to `main`. The Phase 7
+  optional deps install gracefully falls back if the vendored
+  Loopward/Lethe checkouts are absent.
+
+Test counts after Phase 8: 74 studio tests (up from 68, recall endpoint
+adds 6) + 38 frontend tests (up from 29, MemoryClaimsViewer adds 9).
+The full `pytest` run covers 175 tests across `tests/` (57),
+`benchmark/tests/` (44), and `studio/tests/` (74).
 
 ## License
 

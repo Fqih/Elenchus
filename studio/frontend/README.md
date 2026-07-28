@@ -60,3 +60,13 @@ npm run e2e       # playwright (requires server on :8765)
 See `src/` for components, `src/pages/` for views, `src/hooks/` for
 TanStack Query hooks, `src/api.ts` for the typed fetch wrappers, and
 `src/types.ts` for the TS interfaces mirroring the Pydantic models.
+
+## Phase 8 — Lethe memory browser
+
+`src/components/MemoryClaimsViewer.tsx` renders a collapsible list of
+the `MemoryItem`s stored by Phase 7 for the current run. The viewer
+fetches lazily on the first toggle click (no network call while the
+panel is collapsed) and filters Lethe tags down to the ones carrying
+provenance: `source:*`, `v*`, and `elenchus_verified`. Each item shows
+its importance score and access count. The viewer returns `null` when
+the run has zero stored memory so empty toggles never appear.

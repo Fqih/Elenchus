@@ -42,6 +42,7 @@ under `/api/*`.
 | GET    | `/api/runs/{run_id}`                                       | Get a single run including its verdicts |
 | GET    | `/api/projects/{project_id}/gate-policy`                   | Get the project's output-gate policy |
 | PUT    | `/api/projects/{project_id}/gate-policy`                   | Set the project's output-gate policy |
+| GET    | `/api/projects/{project_id}/runs/{run_id}/memory-claims`   | List stored Lethe `MemoryItem`s tagged with `run:{run_id}` (Phase 8; 404 on unknown project or run) |
 
 ## Output gate precedence
 
@@ -177,14 +178,40 @@ httpx + `_wait_ready`); it adds Phase 7 expectations on top.
   "source:{source_id}", "v{version}"]` so a later `recall_run_claims`
   call filters cleanly.
 
+## Phase 8 — recall endpoint + thread safety
+
+Phase 8 exposes the Phase 7 result back to clients over HTTP:
+
+- **`GET /api/projects/{project_id}/runs/{run_id}/memory-claims`** returns
+  the list of `MemoryItem`s tagged with `run:{run_id}` from the
+  project's Lethe SQLite. The `embedding` field is stripped on the way
+  out (the Lethe wire format never carries embeddings). The handler
+  validates both `project_id` (404 on miss) and `run_id` (404 on miss)
+  so a typo does not silently return all of a project's memory.
+- **Thread-safe SQLite backend.** Lethe's stock `SQLiteBackend` opens
+  with `check_same_thread=True` by default; FastAPI's TestClient and
+  ASGI workers invoke from threads other than the one that created
+  the connection. `studio/integrations/lethe.py` subclasses the Lethe
+  backend to open with `check_same_thread=False` instead so any thread
+  in the process can serve a check.
+- **`contradicted` verdicts are never stored.** When a run with mixed
+  verdicts writes through to Lethe, only the `supported` claims land
+  in memory. The recall endpoint therefore never needs to filter
+  per-claim label — `contradicted` claims were excluded at write time.
+
+See `tests/test_phase7_recall_endpoint.py` (6 tests) for the contract:
+empty-when-no-memory, items-present-when-stored, run_id-isolation,
+unknown-project-404, unknown-run-404, contradicted-excluded.
+
 ## Tests
 
 ```bash
 LD_LIBRARY_PATH=$HOME/.local/lib python -m pytest studio/tests
 ```
 
-68 tests across the gate (11), store (20), API (19), Phase 7 schema (5),
-Phase 7 soteria (4), Phase 7 lethe (5), and Phase 7 API (4).
+74 tests across the gate (11), store (20), API (19), Phase 7 schema (5),
+Phase 7 soteria (4), Phase 7 lethe (5), Phase 7 API (4), and Phase 8
+recall endpoint (6).
 
 ## Rules walkthrough
 
