@@ -52,7 +52,7 @@ export function ProjectDetail() {
       {selectedRun && (
         <section className="section">
           <h2>Result</h2>
-          <RunResult run={selectedRun} onClaimClick={setSelectedVerdict} />
+          <RunResult run={selectedRun} onClaimClick={setSelectedVerdict} projectId={projectId} />
         </section>
       )}
 

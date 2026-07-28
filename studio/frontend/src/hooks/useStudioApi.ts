@@ -6,7 +6,7 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 import * as api from "../api";
-import type { Project, Run, SourceDocument, GatePolicy } from "../types";
+import type { Project, Run, SourceDocument, GatePolicy, MemoryClaim } from "../types";
 
 export function useProjects(): UseQueryResult<Project[], Error> {
   return useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
@@ -65,6 +65,17 @@ export function useGatePolicy(
     queryKey: ["gate-policy", projectId],
     queryFn: () => api.getGatePolicy(projectId),
     enabled: !!projectId,
+  });
+}
+
+export function useRunMemoryClaims(
+  projectId: string,
+  runId: string | null | undefined,
+): UseQueryResult<MemoryClaim[], Error> {
+  return useQuery({
+    queryKey: ["run-memory-claims", projectId, runId],
+    queryFn: () => api.getRunMemoryClaims(projectId, runId!),
+    enabled: !!projectId && !!runId,
   });
 }
 

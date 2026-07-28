@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RunResult } from "../src/components/RunResult";
 import type { Run } from "../src/types";
 
@@ -50,6 +52,13 @@ const run: Run = {
   phase7_memory_item_ids: [],
 };
 
+function withQuery(children: React.ReactNode) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+}
+
 describe("RunResult", () => {
   it("renders the gate badge with the right result", () => {
     render(<RunResult run={run} onClaimClick={() => {}} />);
@@ -99,5 +108,77 @@ describe("RunResult", () => {
     };
     render(<RunResult run={remembered} onClaimClick={() => {}} />);
     expect(screen.getByText("1 item stored")).toBeInTheDocument();
+  });
+
+  it("does not show Lethe browser when projectId is omitted", () => {
+    const remembered = {
+      ...run,
+      gate_result: "allowed" as const,
+      phase7_memory_item_ids: ["mem-a", "mem-b"],
+    };
+    render(<RunResult run={remembered} onClaimClick={() => {}} />);
+    expect(screen.queryByRole("button", { name: /Lethe memory/ })).not.toBeInTheDocument();
+  });
+
+  it("renders Lethe browser toggle when projectId is provided", () => {
+    const remembered = {
+      ...run,
+      gate_result: "allowed" as const,
+      phase7_memory_item_ids: ["mem-a"],
+    };
+    render(
+      withQuery(
+        <RunResult run={remembered} onClaimClick={() => {}} projectId="p1" />,
+      ),
+    );
+    expect(
+      screen.getByRole("button", { name: /Lethe memory \(1 item\)/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("fetches + renders memory items when toggle is opened", async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => [
+        {
+          id: "mem-a",
+          content: "Return window claim: 30 days policy.",
+          tags: ["elenchus_verified", "run:r1", "v1"],
+          source_session_id: "p1",
+          created_at: "2026-07-27T07:00:00Z",
+          last_accessed_at: "2026-07-27T07:00:00Z",
+          access_count: 1,
+          importance_score: 0.9,
+        },
+      ],
+    } as unknown as Response);
+
+    const remembered = {
+      ...run,
+      gate_result: "allowed" as const,
+      phase7_memory_item_ids: ["mem-a"],
+    };
+
+    const user = userEvent.setup();
+    render(
+      withQuery(
+        <RunResult run={remembered} onClaimClick={() => {}} projectId="p1" />,
+      ),
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /Lethe memory \(1 item\)/ }),
+    );
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/projects/p1/runs/r1/memory-claims",
+        expect.any(Object),
+      );
+    });
+    expect(
+      screen.getByText("Return window claim: 30 days policy."),
+    ).toBeInTheDocument();
   });
 });

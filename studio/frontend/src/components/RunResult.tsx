@@ -1,14 +1,19 @@
 import type { Run, Verdict } from "../types";
 import { GateBadge } from "./GateBadge";
 import { ClaimSpan } from "./ClaimSpan";
+import { MemoryClaimsViewer } from "./MemoryClaimsViewer";
 import "./RunResult.css";
 
 export function RunResult({
   run,
   onClaimClick,
+  projectId,
 }: {
   run: Run;
   onClaimClick: (verdict: Verdict) => void;
+  /** Required when phase7_memory_item_ids is non-empty so the
+   *  MemoryClaimsViewer can fetch the items from the Studio API. */
+  projectId?: string;
 }) {
   // Build segments from the candidate_answer + claim spans.
   // Each claim occupies [claim.span[0], claim.span[1]). Anything between
@@ -69,6 +74,13 @@ export function RunResult({
                 {run.phase7_memory_item_ids.length} item
                 {run.phase7_memory_item_ids.length === 1 ? "" : "s"} stored
               </span>
+              {projectId && (
+                <MemoryClaimsViewer
+                  projectId={projectId}
+                  runId={run.id}
+                  expectedCount={run.phase7_memory_item_ids.length}
+                />
+              )}
             </div>
           )}
         </section>
