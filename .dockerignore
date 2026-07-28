@@ -1,0 +1,48 @@
+# Files & directories excluded from `docker build` context to keep the
+# image small and the build cache clean. Mirrors .gitignore where it
+# matters for installable wheels; differs where it matters for the
+# frontend build (we keep studio/frontend/node_modules/ excluded).
+
+# VCS
+.git
+.gitignore
+.github
+.gitattributes
+
+# Editor / OS noise
+.DS_Store
+.vscode
+.idea
+
+# Python build / cache artefacts
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.coverage
+htmlcov
+*.egg-info
+.tox
+.venv/
+venv/
+
+# Frontend build cache & node_modules
+studio/frontend/node_modules
+studio/frontend/dist
+studio/frontend/.vite
+
+# Local-only data the backend shouldn't ship with
+benchmark/data
+*.sqlite
+*.sqlite3
+
+# Documentation not needed at runtime
+docs
+*.md
+
+# Plan/spec files (kept out of the image; they live in the repo only)
+Plan.md
+Schema.md
+NOTICE

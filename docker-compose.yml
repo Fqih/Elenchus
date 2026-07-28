@@ -1,0 +1,53 @@
+# Elenchus Studio — single-service docker-compose for local + small-cloud
+# deployments. Brings up the backend on :8765 with a persistent SQLite
+# volume, exposes the API + the prebuilt React SPA at the same origin.
+#
+# Usage:
+#   docker compose build           # build the image (frontend + backend)
+#   ELENCHUS_API_TOKEN=secret \
+#     docker compose up            # bring it up; open http://localhost:8765
+#   docker compose down            # stop + remove the container (keep volume)
+#
+# Secrets:
+#   ELENCHUS_API_TOKEN — bearer token to enforce on /api/*. Required for any
+#                        non-localhost deployment.
+#   ELENCHUS_RATE_LIMIT_RPM — per-token requests-per-minute. Default 600.
+#
+# Phase 7:
+#   To enable Soteria + Lethe, mount your local Loopward/Lethe checkouts
+#   and uncomment INSTALL_PHASE7 in the build args. Without them the
+#   respective /checks requests will return 503 per the Phase 7 spec.
+
+name: elenchus
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      # Set to 1 to pull Phase 7 deps. Requires ../Loopward and ../Lethe
+      # checkouts to be present on the host (mounted for build only).
+      args:
+        INSTALL_PHASE7: "0"
+    image: elenchus:dev
+    container_name: elenchus-app
+    restart: unless-stopped
+    ports:
+      - "${ELENCHUS_PORT:-8765}:8765"
+    environment:
+      ELENCHUS_API_TOKEN: "${ELENCHUS_API_TOKEN:-}"
+      ELENCHUS_RATE_LIMIT_RPM: "${ELENCHUS_RATE_LIMIT_RPM:-600}"
+      ELENCHUS_DB_PATH: /data/studio.sqlite
+      LD_LIBRARY_PATH: /usr/local/lib
+    volumes:
+      - elenchus-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8765/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  elenchus-data:
+    driver: local

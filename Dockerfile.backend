@@ -1,0 +1,88 @@
+# Elenchus Studio backend image.
+#
+# Builds the React frontend as part of the same image so the result is one
+# container that serves both /api/* and the SPA. Single-port deployment.
+#
+# Build:  docker build -f Dockerfile.backend -t elenchus:dev .
+# Run:    docker run --rm -p 8765:8765 -e ELENCHUS_API_TOKEN=secret elenchus:dev
+#
+# Phase 7 deps (soteria-loop / lethe-agent) are NOT bundled. Mount your
+# local Loopward/Lethe checkouts into /app/phase7_src and rebuild with
+# --build-arg INSTALL_PHASE7=1 to enable them. Default install is dev +
+# studio + eval only.
+
+FROM python:3.11-slim AS backend-base
+
+# sentence-transformers / torch wheel needs a writable temp + the shared
+# NLI cache directory. Set them once at image level so apps inherit.
+ENV PIP_NO_CACHE_DIR=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    TRANSFORMERS_CACHE=/root/.cache/huggingface
+
+# Install build deps for any pip wheel that needs compiling.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        curl \
+        git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy only the install manifest first so Docker can cache the layer.
+COPY pyproject.toml README.md LICENSE ./
+
+# Copy the package source. (Benchmark/Studio/Frontend are not part of the
+# installable `elenchus` package, but their PYTHONPATH additions are
+# configured by the editable install.)
+COPY elenchus ./elenchus
+COPY studio ./studio
+COPY benchmark ./benchmark
+COPY examples ./examples
+COPY tests ./tests
+
+# Phase 7 source paths are mounted at runtime, not baked in. The install
+# below pulls `[dev,studio,eval]`; pass INSTALL_PHASE7=1 to also pull
+# the optional phase7 deps (requires Loopward/Lethe checkouts to exist).
+ARG INSTALL_PHASE7=0
+RUN pip install --upgrade pip && \
+    if [ "$INSTALL_PHASE7" = "1" ]; then \
+        pip install -e ".[dev,studio,eval,phase7]"; \
+    else \
+        pip install -e ".[dev,studio,eval]"; \
+    fi
+
+# Build the frontend. We reuse the Vite production build to keep the
+# backend image self-contained.
+FROM node:20-slim AS frontend-build
+
+WORKDIR /app/studio/frontend
+COPY studio/frontend/package.json studio/frontend/package-lock.json* ./
+RUN npm ci || npm install
+COPY studio/frontend ./
+RUN npm run build
+
+# Final stage — backend + frontend dist together.
+FROM backend-base AS runtime
+
+COPY --from=frontend-build /app/studio/frontend/dist /app/studio/frontend/dist
+
+# Run as a non-root user. UID 10001 is the conventional Elenchus UID; the
+# data dir is writable so SQLite + Lethe files can land on the volume.
+RUN useradd --create-home --uid 10001 --shell /bin/bash elenchus && \
+    mkdir -p /data && chown elenchus:elenchus /data
+USER elenchus
+WORKDIR /app
+
+ENV ELENCHUS_DB_PATH=/data/studio.sqlite
+EXPOSE 8765
+
+# Healthcheck probes /health which always returns 200 (auth-disabled).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD curl -fsS http://localhost:8765/health || exit 1
+
+# Default CMD: launch the FastAPI server with the volume-mounted SQLite.
+# Override with --port etc. via `docker run ... elenchus:dev --port 8888`.
+CMD ["python", "-m", "studio.api.server", \
+     "--db", "/data/studio.sqlite", \
+     "--port", "8765"]

@@ -111,6 +111,24 @@ The `dev` target spawns both processes in one terminal with prefixed
 output (`[api] …` / `[frontend] …`) and kills both on Ctrl-C — no more
 two-tab dance.
 
+### Docker (single-container)
+
+```bash
+make docker-build                  # builds the backend + frontend into one image
+ELENCHUS_API_TOKEN=secret make docker-up     # bring it up on :8765
+make docker-down                   # tear it down (keeps the SQLite volume)
+```
+
+The image bundles the React production build so the same FastAPI process
+serves both `/api/*` and the SPA at the same origin. SQLite + per-project
+Lethe files land in a named volume (`elenchus-data`) so state survives
+container restarts.
+
+Phase 7 (Soteria + Lethe) is **off by default**; build with
+`INSTALL_PHASE7=1` after mounting the local Loopward/Lethe checkouts.
+Without them the relevant `/checks` requests return 503 per the Phase 7
+spec — the rest of the API still works.
+
 ## Quickstart
 
 ```python
@@ -253,6 +271,13 @@ Current implementation status:
 - ✅ Phase 9: Top-level Makefile — `make serve`, `make fe-dev`, `make dev`
   expose all backend + frontend operations from the repo root (no more
   `cd studio/frontend && …` to run the dev server)
+- ✅ Phase 10: Production hardening — bearer-token auth, in-process rate
+  limit, Prometheus `/metrics`, JSON-structured logs, `/health` endpoint
+- ✅ Phase 11: HaluEval QA benchmark — `benchmark/halueval_runner.py`,
+  test coverage for pair construction + metric math, `[eval]` optional-dep
+- ✅ Phase 15: Docker packaging — `Dockerfile.backend` (multi-stage
+  python+node build), `docker-compose.yml` with persistent volume and
+  bearer-token env wiring, single-container deployment
 
 ## Studio (Phase 5)
 

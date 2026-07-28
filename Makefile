@@ -119,3 +119,19 @@ ci: test fe-typecheck fe-test ## the full local CI gate (pytest + frontend typec
 clean: fe-clean ## remove build artifacts
 	rm -rf elenchus.egg-info .pytest_cache **/__pycache__ */**/__pycache__
 	find . -name '*.pyc' -delete
+
+# ---- Docker ----
+
+.PHONY: docker-build
+docker-build: ## docker build -t elenchus:dev (builds frontend too)
+	ELENCHUS_API_TOKEN=$${ELENCHUS_API_TOKEN:-devsecret} \
+	  docker build -f Dockerfile.backend -t elenchus:dev .
+
+.PHONY: docker-up
+docker-up: ## docker compose up with a default API token (for local dev)
+	ELENCHUS_API_TOKEN=$${ELENCHUS_API_TOKEN:-devsecret} \
+	  docker compose up --build
+
+.PHONY: docker-down
+docker-down: ## docker compose down (keeps the volume)
+	docker compose down
