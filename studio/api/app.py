@@ -38,10 +38,19 @@ from elenchus.types import Verdict
 from elenchus.verification_log import InMemoryVerificationLog
 from elenchus.verifier import Verifier
 
+from studio.api.auth import install_auth
+from studio.api.obs import (
+    MetricsRegistry,
+    configure_json_logging,
+    install_metrics_endpoint,
+)
 from studio.db.store import StudioStore
 from studio.gate import GatePolicy, evaluate_gate
 from studio import integrations as _phase7
 from studio.integrations import Phase7DependencyError
+
+import logging as _logging
+_log = _logging.getLogger("elenchus.studio.api")
 
 
 NliFactory = Callable[[VerificationConfig], object]
@@ -193,18 +202,31 @@ def create_app(
     *,
     store: StudioStore,
     nli_factory: Optional[NliFactory] = None,
+    metrics: Optional[MetricsRegistry] = None,
+    auth_tokens: Optional[List[str]] = None,
 ) -> FastAPI:
     """Build the Studio FastAPI app.
 
     The store is owned by the caller (so tests can share a temp DB). The
     `nli_factory` builds the NLI instance per check; if absent, the
     Verifier falls back to its default (real cross-encoder model).
+
+    `metrics`: optional MetricsRegistry. When None, a fresh one is created
+    and exposed at /metrics. Pass an existing one to share across apps.
+
+    `auth_tokens`: optional list of bearer tokens. When None, reads
+    ELENCHUS_API_TOKEN(S) from env, or disables auth if unset.
     """
     app = FastAPI(
         title="Elenchus Studio",
         description="Backend API for Elenchus verification runs.",
         version="0.1.0",
     )
+    configure_json_logging(level=_logging.INFO, logger_name="elenchus")
+    if metrics is None:
+        metrics = MetricsRegistry()
+    install_metrics_endpoint(app, metrics)
+    install_auth(app, tokens=auth_tokens)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -407,6 +429,30 @@ def create_app(
             run.phase7_retry_attempts = retry_attempts
             run.phase7_memory_item_ids = memory_item_ids
 
+        # Observability — record metrics + structured log.
+        metrics.checks_total.inc(labels={"gate": gate_result})
+        metrics.gate_decisions_total.inc(labels={"outcome": gate_result})
+        metrics.check_latency_ms.observe(latency_ms)
+        if retry_attempts:
+            metrics.phase7_retry_attempts_total.inc(
+                amount=retry_attempts, labels={"stop_reason": str(retry_stop_reason)}
+            )
+        if memory_item_ids:
+            metrics.phase7_memory_writes_total.inc(amount=len(memory_item_ids))
+        _log.info(
+            "check_complete",
+            extra={
+                "project_id": project_id,
+                "run_id": run.id,
+                "gate_result": gate_result,
+                "latency_ms": round(latency_ms, 2),
+                "claim_count": len(verdicts),
+                "model_or_prompt_label": req.model_or_prompt_label,
+                "phase7_retry_attempts": retry_attempts,
+                "phase7_memory_item_ids": len(memory_item_ids),
+            },
+        )
+
         return _run_to_dict(run)
 
     # ---- Run endpoints --------------------------------------------------
@@ -505,6 +551,11 @@ def create_app(
         }
 
     app.include_router(api)
+
+    @app.get("/health", include_in_schema=False)
+    def health() -> dict:
+        """Liveness probe — always returns 200 if the process is up."""
+        return {"ok": True}
 
     dist_dir = Path(__file__).parent.parent / "frontend" / "dist"
     if dist_dir.is_dir():
