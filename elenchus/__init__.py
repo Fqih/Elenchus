@@ -1,6 +1,12 @@
 """Elenchus — per-claim faithfulness checker for LLM/RAG output."""
 
 from elenchus.config import VerificationConfig
+from elenchus.judges import (
+    EchoJudge,
+    FunctionJudge,
+    Judge,
+    KeywordOverlapJudge,
+)
 from elenchus.llm_judge import invoke_judge
 from elenchus.rendering import render_ansi, render_html
 from elenchus.streaming import StreamingVerifier
@@ -24,6 +30,10 @@ __all__ = [
     "Verifier",
     "StreamingVerifier",
     "invoke_judge",
+    "Judge",
+    "FunctionJudge",
+    "EchoJudge",
+    "KeywordOverlapJudge",
     "render_ansi",
     "render_html",
 ]
