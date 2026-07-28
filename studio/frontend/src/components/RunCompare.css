@@ -1,0 +1,100 @@
+.run-compare {
+  margin-top: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  background: var(--color-surface);
+}
+
+.run-compare-header {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.run-compare-selector {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.8125rem;
+  color: var(--color-muted);
+  flex: 1;
+}
+
+.run-compare-selector select {
+  margin-top: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.run-compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.run-compare-table th,
+.run-compare-table td {
+  padding: var(--space-2);
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.run-compare-table th {
+  font-weight: 600;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  font-size: 0.75rem;
+}
+
+.run-compare-table tr.differs {
+  background: rgba(252, 211, 77, 0.08);
+}
+
+.run-compare-table tr.same {
+  background: transparent;
+}
+
+.run-compare-table .claim-cell {
+  max-width: 18rem;
+}
+
+.compare-label {
+  display: inline-block;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.compare-label-supported {
+  background: var(--color-allowed-bg);
+  color: var(--color-allowed-fg);
+}
+
+.compare-label-contradicted {
+  background: var(--color-blocked-bg);
+  color: var(--color-blocked-fg);
+}
+
+.compare-label-unverifiable {
+  background: var(--color-flagged-bg);
+  color: var(--color-flagged-fg);
+}
+
+.diff-badge {
+  display: inline-block;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: #fde68a;
+  color: #92400e;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}

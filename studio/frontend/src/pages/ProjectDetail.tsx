@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useProject, useSourceDocuments } from "../hooks/useStudioApi";
+import { useProject, useSourceDocuments, useRuns } from "../hooks/useStudioApi";
 import { SourceDocForm } from "../components/SourceDocForm";
 import { SourceDocList } from "../components/SourceDocList";
 import { CheckForm } from "../components/CheckForm";
 import { RunResult } from "../components/RunResult";
 import { EvidencePanel } from "../components/EvidencePanel";
 import { RunHistory } from "../components/RunHistory";
+import { RunCompareView } from "../components/RunCompareView";
 import type { Run, Verdict } from "../types";
 import "./Pages.css";
 
@@ -14,6 +15,7 @@ export function ProjectDetail() {
   const { projectId = "" } = useParams<{ projectId: string }>();
   const { data: project, isError: projectErr } = useProject(projectId);
   const { data: docs } = useSourceDocuments(projectId);
+  const { data: runs } = useRuns(projectId);
   const [selectedRun, setSelectedRun] = useState<Run | null>(null);
   const [selectedVerdict, setSelectedVerdict] = useState<Verdict | null>(null);
 
@@ -60,6 +62,13 @@ export function ProjectDetail() {
         <h2>Run history</h2>
         <RunHistory projectId={projectId} onSelect={setSelectedRun} />
       </section>
+
+      {runs && runs.length >= 2 && (
+        <section className="section">
+          <h2>Compare two runs</h2>
+          <RunCompareView projectId={projectId} runs={runs} />
+        </section>
+      )}
 
       {selectedVerdict && (
         <EvidencePanel
