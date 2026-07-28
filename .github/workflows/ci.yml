@@ -1,0 +1,68 @@
+# Elenchus CI — runs on push and PR to main.
+#
+# Two parallel jobs:
+#   * python — pip install + pytest (covers tests/, benchmark/tests/, studio/tests/)
+#   * frontend — npm ci + typecheck + vitest (covers studio/frontend/)
+#
+# Phase 7 optional deps (soteria-loop, lethe-agent) are installed so the
+# phase7 integration tests can exercise their real runtime. If the local
+# Loopward/Lethe checkouts are absent (e.g. a fork doesn't vendor them),
+# the install falls back to plain `[dev,studio]` — the phase7 tests then
+# skip via their Phase7DependencyError path.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  python:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Elenchus (with Phase 7 if available)
+        run: |
+          python -m pip install --upgrade pip
+          # Try the full Phase 7 install first; if the vendored Loopward/Lethe
+          # paths don't exist on this checkout, retry without phase7.
+          if ! (cd .. && pip install -e ".[dev,studio,phase7]"); then
+            echo "::warning::Phase 7 install failed — retrying without phase7 (phase7 tests will skip)"
+            pip install -e ".[dev,studio]"
+          fi
+
+      - name: Run pytest
+        run: pytest -q
+
+  frontend:
+    name: typecheck + vitest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: studio/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: studio/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run vitest
+        run: npm test
