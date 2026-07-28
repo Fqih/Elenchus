@@ -27,6 +27,9 @@ phase7 = [
     "soteria-loop @ file://../Loopward",
     "lethe-agent @ file://../Lethe",
 ]
+eval = [
+    "datasets>=2.14.0",
+]  # Phase 11: HaluEval benchmark deps
 
 [tool.setuptools.packages.find]
 include = ["elenchus*", "studio*"]
