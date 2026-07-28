@@ -15,7 +15,7 @@ Phase 1 had Tier 1 only. Phase 2 adds the confidence-gap escalation above.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional, Sequence, Tuple
+from typing import Iterator, List, Optional, Sequence, Tuple
 
 from elenchus.claim_extractor import extract_claims
 from elenchus.config import VerificationConfig
@@ -47,6 +47,30 @@ class Verifier:
         """Verify every claim in `output_text` against `source_documents`."""
         claims = extract_claims(output_text)
         return [self.verify_claim(claim, source_documents) for claim in claims]
+
+    def stream_verdicts(
+        self,
+        output_text: str,
+        source_documents: Sequence[Tuple[str, str]],
+    ) -> Iterator[Verdict]:
+        """Yield each verdict as soon as it's produced.
+
+        This is the streaming variant of `verify`. The verdict sequence is
+        identical to `verify(output_text, source_documents)` for the same
+        inputs — same claims, same Tier-1 / Tier-2 routing, same log writes
+        — but the caller receives each Verdict the moment it is decided.
+
+        Used by the studio API's SSE `/checks/stream` endpoint so a long
+        verification run can stream progress to the UI claim-by-claim
+        instead of blocking until the full batch completes.
+
+        Rule 5: `StreamingVerifier` and `Verifier` produce identical verdicts
+        on the same finished text. The streaming batch path here is the same
+        single-claim pipeline as `verify_claim`, called one at a time.
+        """
+        claims = extract_claims(output_text)
+        for claim in claims:
+            yield self.verify_claim(claim, source_documents)
 
     def verify_claim(
         self,

@@ -10,6 +10,7 @@ Endpoints (all under /api):
 - GET  /api/projects/{project_id}/source-documents/{sid}   — get source doc (latest by default)
 - PATCH /api/projects/{project_id}/source-documents/{sid}  — edit source doc (bumps version)
 - POST /api/projects/{project_id}/checks                   — submit a check
+- POST /api/projects/{project_id}/checks/stream            — SSE per-claim stream (Phase 13)
 - GET  /api/projects/{project_id}/runs                     — list run history
 - GET  /api/runs/{run_id}                                  — get a single run
 - GET  /api/projects/{project_id}/gate-policy              — get gate policy
@@ -22,12 +23,14 @@ modules are not touched.
 
 from __future__ import annotations
 
+import json
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, Iterator, List, Optional
 
 from fastapi import APIRouter, FastAPI, HTTPException, status
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -152,6 +155,24 @@ def _source_doc_to_dict(d) -> dict:
         "created_at": d.created_at,
         "updated_at": d.updated_at,
     }
+
+
+def _sse_error_event(message: str) -> bytes:
+    """Format a soft-fail SSE error event (Phase 13 streaming)."""
+    payload = json.dumps({"event": "error", "data": {"message": message}})
+    return f"event: error\ndata: {payload}\n\n".encode("utf-8")
+
+
+def _sse_json(payload) -> str:
+    """JSON-encode for SSE, converting datetimes to ISO strings.
+
+    The studio dicts (`_verdict_to_dict`, `_run_to_dict`) include
+    `datetime` fields that Pydantic serializes in normal responses but
+    that `json.dumps` cannot handle directly. Use `default=str` so the
+    SSE wire format is always valid JSON regardless of what timestamps
+    show up.
+    """
+    return json.dumps(payload, default=str)
 
 
 def _verdict_to_dict(v: Verdict) -> dict:
@@ -454,6 +475,161 @@ def create_app(
         )
 
         return _run_to_dict(run)
+
+    # ---- Streaming check endpoint (Phase 13) ----------------------------
+
+    @api.post("/projects/{project_id}/checks/stream")
+    def stream_check(project_id: str, req: SubmitCheckRequest):
+        """Stream per-claim verdicts as Server-Sent Events.
+
+        Mirrors `submit_check` exactly — same persist path, same Phase 7
+        integrations, same metrics — but emits each verdict to the client
+        as soon as it is decided, instead of buffering the whole batch.
+
+        Event types:
+          - `claim`    — one verdict (label, tier, confidence, claim text)
+          - `summary`  — final run object (same shape as POST /checks)
+          - `error`    — soft failure (e.g. Phase 7 integration error);
+                         a `summary` event still follows with the partial run.
+        """
+        try:
+            store.get_project(project_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="project not found")
+
+        source_docs = store.list_source_documents(project_id=project_id)
+        sources_for_verifier: List = [(d.name, d.content) for d in source_docs]
+        source_versions = {d.id: d.version for d in source_docs}
+
+        cfg = VerificationConfig()
+        log = InMemoryVerificationLog()
+        if nli_factory is not None:
+            nli = nli_factory(cfg)
+            verifier = Verifier(config=cfg, log=log, nli=nli)
+        else:
+            verifier = Verifier(config=cfg, log=log)
+
+        def event_stream() -> Iterator[bytes]:
+            t0 = time.perf_counter()
+            collected: List[Verdict] = []
+            try:
+                for verdict in verifier.stream_verdicts(
+                    output_text=req.candidate_answer,
+                    source_documents=sources_for_verifier,
+                ):
+                    collected.append(verdict)
+                    payload = _sse_json(
+                        {"event": "claim", "data": _verdict_to_dict(verdict)}
+                    )
+                    yield f"event: claim\ndata: {payload}\n\n".encode("utf-8")
+
+                latency_ms = (time.perf_counter() - t0) * 1000.0
+                policy = store.get_gate_policy(project_id=project_id)
+                gate_result = evaluate_gate(policy, collected)
+
+                run = store.record_run(
+                    project_id=project_id,
+                    question=req.question,
+                    model_or_prompt_label=req.model_or_prompt_label,
+                    candidate_answer=req.candidate_answer,
+                    source_versions=source_versions,
+                    verdicts=collected,
+                    gate_result=gate_result,
+                    latency_ms=latency_ms,
+                )
+
+                retry_stop_reason: Optional[str] = None
+                retry_attempts: int = 0
+                memory_item_ids: List[str] = []
+
+                if policy.phase7_enabled and gate_result == "blocked":
+                    try:
+                        retry = _phase7.run_retry(
+                            verifier, cfg,
+                            candidate_answer=req.candidate_answer,
+                            source_documents=sources_for_verifier,
+                        )
+                        retry_stop_reason = retry.stop_reason
+                        retry_attempts = retry.attempts
+                    except Phase7DependencyError as exc:
+                        yield _sse_error_event(
+                            f"phase7_dependency_error: {exc}"
+                        )
+                    except Exception:  # noqa: BLE001 — soft-fail per spec
+                        retry_stop_reason = "error"
+                        retry_attempts = 0
+
+                elif policy.phase7_enabled and gate_result == "allowed":
+                    try:
+                        memory_item_ids = _phase7.write_supported_claims(
+                            project_id=project_id,
+                            run_id=run.id,
+                            verdicts=collected,
+                            source_versions=source_versions,
+                            db_dir=store._path.parent,  # noqa: SLF001
+                        )
+                    except Phase7DependencyError as exc:
+                        yield _sse_error_event(
+                            f"phase7_dependency_error: {exc}"
+                        )
+                    except Exception:  # noqa: BLE001 — soft-fail per spec
+                        memory_item_ids = []
+
+                if retry_stop_reason or retry_attempts or memory_item_ids:
+                    store.update_run_phase7(
+                        run_id=run.id,
+                        phase7_retry_stop_reason=retry_stop_reason,
+                        phase7_retry_attempts=retry_attempts,
+                        phase7_memory_item_ids=memory_item_ids,
+                    )
+                    run.phase7_retry_stop_reason = retry_stop_reason
+                    run.phase7_retry_attempts = retry_attempts
+                    run.phase7_memory_item_ids = memory_item_ids
+
+                metrics.checks_total.inc(labels={"gate": gate_result})
+                metrics.gate_decisions_total.inc(labels={"outcome": gate_result})
+                metrics.check_latency_ms.observe(latency_ms)
+                if retry_attempts:
+                    metrics.phase7_retry_attempts_total.inc(
+                        amount=retry_attempts,
+                        labels={"stop_reason": str(retry_stop_reason)},
+                    )
+                if memory_item_ids:
+                    metrics.phase7_memory_writes_total.inc(
+                        amount=len(memory_item_ids)
+                    )
+                _log.info(
+                    "check_complete_streaming",
+                    extra={
+                        "project_id": project_id,
+                        "run_id": run.id,
+                        "gate_result": gate_result,
+                        "latency_ms": round(latency_ms, 2),
+                        "claim_count": len(collected),
+                        "model_or_prompt_label": req.model_or_prompt_label,
+                        "phase7_retry_attempts": retry_attempts,
+                        "phase7_memory_item_ids": len(memory_item_ids),
+                    },
+                )
+
+                summary_payload = _sse_json(
+                    {"event": "summary", "data": _run_to_dict(run)}
+                )
+                yield f"event: summary\ndata: {summary_payload}\n\n".encode("utf-8")
+            except Exception as exc:  # noqa: BLE001 — final soft-fail
+                err_payload = _sse_json(
+                    {"event": "error", "data": {"message": str(exc)}}
+                )
+                yield f"event: error\ndata: {err_payload}\n\n".encode("utf-8")
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     # ---- Run endpoints --------------------------------------------------
 
