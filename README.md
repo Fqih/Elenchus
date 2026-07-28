@@ -58,7 +58,7 @@ studio/
 ├── db/                   StudioStore (Project, SourceDocument, Run, GatePolicy)
 ├── frontend/             Phase 6+: React + TypeScript + Vite
 │   ├── src/components/   MemoryClaimsViewer (Phase 8), RunResult, etc.
-│   └── tests/            vitest — 38 tests across Phase 8 components
+│   └── tests/            vitest — 43 tests across Phase 8/16 components
 ├── gate.py               Output gate — pure function (Rule 2)
 ├── integrations/         Phase 7: Soteria adapter + Lethe adapter (lazy)
 │   ├── __init__.py       Module-level lazy proxies + Phase7DependencyError
@@ -66,9 +66,10 @@ studio/
 │   └── lethe.py          write_supported_claims / recall_run_claims
 ├── examples/             studio_smoke_test.py (Phase 5)
 │                         studio_phase7_smoke_test.py (Phase 7 acceptance)
-└── tests/                74 tests — gate(11) + store(20) + api(19)
+└── tests/                95 tests — gate(11) + store(20) + api(19)
                           + phase7-schema(5) + phase7-soteria(4)
                           + phase7-lethe(5) + phase7-api(4) + recall(6)
+                          + auth(8) + metrics(5) + docker(8)
 
 tests/                    Unit, integration, streaming, and benchmark tests
 
@@ -278,6 +279,9 @@ Current implementation status:
 - ✅ Phase 15: Docker packaging — `Dockerfile.backend` (multi-stage
   python+node build), `docker-compose.yml` with persistent volume and
   bearer-token env wiring, single-container deployment
+- ✅ Phase 16: A/B model diff view — `RunCompareView` component in the
+  project page (selectable left/right runs, per-claim DIFF badges for
+  mismatched verdicts, same/differ row tinting). 5 new frontend tests.
 
 ## Studio (Phase 5)
 
@@ -404,10 +408,11 @@ ops plumbing needed to ship it:
   optional deps install gracefully falls back if the vendored
   Loopward/Lethe checkouts are absent.
 
-Test counts after Phase 8: 74 studio tests (up from 68, recall endpoint
-adds 6) + 38 frontend tests (up from 29, MemoryClaimsViewer adds 9).
-The full `pytest` run covers 175 tests across `tests/` (57),
-`benchmark/tests/` (44), and `studio/tests/` (74).
+Test counts after Phase 16: 95 studio tests (up from 68 after Phase 8,
+Phases 10/15 added auth + metrics + docker packaging) + 43 frontend
+tests (up from 29 after Phase 6, MemoryClaimsViewer +9, RunCompareView
++5). The full `pytest` run covers 204 tests across `tests/` (57),
+`benchmark/tests/` (52), and `studio/tests/` (95).
 
 ## License
 
