@@ -89,6 +89,28 @@ pip install -e ".[dev]"
 # downloaded on first benchmark run (~80MB).
 ```
 
+## Quick commands (one Makefile at the repo root)
+
+```bash
+make help         # list every target with a one-liner
+make install      # pip install backend (with Phase 7 if available)
+make test         # pytest across tests/, benchmark/tests/, studio/tests/
+make serve        # FastAPI server on :8765
+make smoke        # Phase 5 E2E acceptance
+make smoke7       # Phase 7 E2E acceptance (Soteria + Lethe)
+make fe-install   # npm ci in studio/frontend
+make fe-test      # vitest in studio/frontend
+make fe-typecheck # tsc --noEmit in studio/frontend
+make fe-dev       # vite dev server on :5173
+make fe-build     # vite build to studio/frontend/dist
+make dev          # run backend (:8765) AND frontend (:5173) together
+make ci           # the full local CI gate (test + fe-test + fe-typecheck)
+```
+
+The `dev` target spawns both processes in one terminal with prefixed
+output (`[api] …` / `[frontend] …`) and kills both on Ctrl-C — no more
+two-tab dance.
+
 ## Quickstart
 
 ```python
@@ -228,6 +250,9 @@ Current implementation status:
 - ✅ Phase 8: Frontend + Ops polish — Phase 7 fields visible in the
   result panel, Lethe memory browser, recall endpoint, GitHub Actions CI,
   README updates
+- ✅ Phase 9: Top-level Makefile — `make serve`, `make fe-dev`, `make dev`
+  expose all backend + frontend operations from the repo root (no more
+  `cd studio/frontend && …` to run the dev server)
 
 ## Studio (Phase 5)
 
